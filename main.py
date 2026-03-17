@@ -1,25 +1,27 @@
 from fastapi import FastAPI
 
-from api.routes import items, health
+from api.routes import items, health, chart
 
 app = FastAPI(
-    title="Sample FastAPI Application",
-    description="A well-structured FastAPI application with routes and services",
+    title="Vedic Astrology Scoring Engine",
+    description="A comprehensive Vedic astrology scoring engine with natal chart generation and analysis",
     version="1.0.0"
 )
 
 # Include routers
 app.include_router(health.router)
 app.include_router(items.router)
+app.include_router(chart.router)
 
 
 @app.get("/")
 async def root():
     """Root endpoint returning a welcome message."""
     return {
-        "message": "Welcome to the FastAPI Sample Application!",
+        "message": "Welcome to the Vedic Astrology Scoring Engine!",
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
+        "chart_api": "/chart"
     }
 
 
