@@ -28,7 +28,7 @@ from .planet_placement import PlanetPlacement, TransitPlacement
 from .natal_chart import HouseInfo, NatalChart
 
 # Dasha periods
-from .dasha import DashaPeriod, ActiveDashas
+from .dasha import DashaPeriod, ActiveDashas, DashaWeight
 
 # Transit data
 from .transit import TransitData, TimeSegment
@@ -71,6 +71,7 @@ __all__ = [
     # Dasha
     "DashaPeriod",
     "ActiveDashas",
+    "DashaWeight",
     # Transit
     "TransitData",
     "TimeSegment",

@@ -24,7 +24,7 @@ class ChartGenerateRequest(BaseModel):
     birth_date: datetime = Field(..., description="Birth date and time", example="1993-04-02T01:15:00")
     latitude: float = Field(..., ge=-90, le=90, description="Birth location latitude", example=29.58633)
     longitude: float = Field(..., ge=-180, le=180, description="Birth location longitude", example=80.23275)
-    city: Optional[str] = Field(None, description="City name", example="Karmala")
+    city: Optional[str] = Field(None, description="City name", example="Pithoragarh")
     country: Optional[str] = Field(None, description="Country name", example="India")
     timezone: str = Field("UTC", description="Timezone", example="Asia/Kolkata")
 
