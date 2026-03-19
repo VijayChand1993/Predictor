@@ -52,7 +52,12 @@ class TimeSegment(BaseModel):
     start_date: datetime = Field(..., description="Start of this segment")
     end_date: datetime = Field(..., description="End of this segment")
     transit_data: TransitData = Field(..., description="Transit positions during this segment")
-    duration_days: float = Field(..., description="Duration of segment in days")
+
+    @property
+    def duration_days(self) -> float:
+        """Calculate duration in days."""
+        delta = self.end_date - self.start_date
+        return delta.total_seconds() / 86400
     
     class Config:
         json_schema_extra = {

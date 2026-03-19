@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from api.routes import items, health, chart, dasha
+from api.routes import items, health, chart, dasha, transit
 
 app = FastAPI(
     title="Vedic Astrology Scoring Engine",
@@ -13,6 +13,7 @@ app.include_router(health.router)
 app.include_router(items.router)
 app.include_router(chart.router)
 app.include_router(dasha.router)
+app.include_router(transit.router)
 
 
 @app.get("/")
@@ -23,11 +24,12 @@ async def root():
         "docs": "/docs",
         "health": "/health",
         "chart_api": "/chart",
-        "dasha_api": "/dasha"
+        "dasha_api": "/dasha",
+        "transit_api": "/transit"
     }
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
 

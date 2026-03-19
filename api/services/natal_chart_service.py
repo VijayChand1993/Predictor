@@ -72,7 +72,55 @@ class NatalChartService:
         natal_chart = self._parse_chart(json_data, birth_data, chart_id)
         
         return natal_chart
-    
+
+    def load_chart(self, chart_id: str) -> NatalChart:
+        """
+        Load a previously saved natal chart by its ID.
+
+        Args:
+            chart_id: UUID of the chart to load
+
+        Returns:
+            NatalChart: The loaded natal chart
+
+        Raises:
+            FileNotFoundError: If chart file doesn't exist
+        """
+        json_path = self.output_dir / f"chart_{chart_id}.json"
+
+        if not json_path.exists():
+            raise FileNotFoundError(f"Chart file not found: {json_path}")
+
+        # Load JSON data
+        with open(json_path, 'r') as f:
+            json_data = json.load(f)
+
+        # Extract birth data from the saved chart
+        # The jyotishganit JSON doesn't store birth data, so we need to reconstruct it
+        # from the chart metadata if available, or use placeholder values
+
+        # For now, we'll extract what we can from the chart
+        d1_chart = json_data.get("d1Chart", {})
+
+        # Try to get location from chart if available
+        # Otherwise use placeholder (this is a limitation of jyotishganit JSON)
+        birth_data = BirthData(
+            date=datetime.now(),  # Placeholder - not stored in jyotishganit JSON
+            location=Location(
+                latitude=0.0,  # Placeholder
+                longitude=0.0,  # Placeholder
+                city="Unknown",
+                country="Unknown",
+                timezone="UTC"
+            ),
+            name="Loaded Chart"
+        )
+
+        # Parse the chart
+        natal_chart = self._parse_chart(json_data, birth_data, chart_id)
+
+        return natal_chart
+
     def _get_timezone_offset(self, timezone_str: str) -> float:
         """
         Get timezone offset in hours from timezone string.
