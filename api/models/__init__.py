@@ -49,6 +49,9 @@ from .scoring import (
     PlanetScore,
     HouseContributors,
     HouseScore,
+    PlanetScores,
+    ScoringRequest,
+    ScoringResponse,
 )
 
 # Results
@@ -108,6 +111,9 @@ __all__ = [
     "PlanetScore",
     "HouseContributors",
     "HouseScore",
+    "PlanetScores",
+    "ScoringRequest",
+    "ScoringResponse",
     # Results
     "TimeRange",
     "ScoringResult",

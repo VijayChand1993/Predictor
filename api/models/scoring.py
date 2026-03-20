@@ -2,7 +2,7 @@
 Scoring models for planet and house influence.
 """
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from pydantic import BaseModel, Field
 from .enums import Planet
 
@@ -110,7 +110,7 @@ class HouseScore(BaseModel):
     house: int = Field(..., ge=1, le=12, description="House number (1-12)")
     score: float = Field(..., ge=0, le=100, description="Final normalized score (0-100)")
     contributors: HouseContributors = Field(..., description="Breakdown of planet contributions")
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -123,6 +123,93 @@ class HouseScore(BaseModel):
                         "Mars": 6.8,
                         "Jupiter": 2.5
                     }
+                }
+            }
+        }
+
+
+class PlanetScores(BaseModel):
+    """Collection of planet scores."""
+    scores: Dict[Planet, PlanetScore] = Field(..., description="Scores for each planet")
+    calculation_date: datetime = Field(..., description="Date/time of calculation")
+
+    def total_score(self) -> float:
+        """Calculate total of all planet scores (should be ~100)."""
+        return sum(score.score for score in self.scores.values())
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "scores": {
+                    "Saturn": {
+                        "planet": "Saturn",
+                        "score": 34.5,
+                        "breakdown": {
+                            "dasha": 40,
+                            "transit": 80,
+                            "strength": 45,
+                            "aspect": 60,
+                            "motion": 50
+                        },
+                        "weighted_components": {
+                            "dasha": 14.0,
+                            "transit": 20.0,
+                            "strength": 9.0,
+                            "aspect": 7.2,
+                            "motion": 4.0
+                        }
+                    }
+                },
+                "calculation_date": "2026-03-20T12:00:00"
+            }
+        }
+
+
+class ScoringRequest(BaseModel):
+    """Request model for planet scoring calculation."""
+    chart_id: str = Field(..., description="Chart identifier")
+    calculation_date: datetime = Field(..., description="Date/time for scoring calculation")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "chart_id": "04ecf146-d0e1-4e72-8c30-fb8bba03e2e5",
+                "calculation_date": "2026-03-20T12:00:00"
+            }
+        }
+
+
+class ScoringResponse(BaseModel):
+    """Response model for planet scoring calculation."""
+    chart_id: str = Field(..., description="Chart identifier")
+    planet_scores: PlanetScores = Field(..., description="Complete planet scoring")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "chart_id": "04ecf146-d0e1-4e72-8c30-fb8bba03e2e5",
+                "planet_scores": {
+                    "scores": {
+                        "Saturn": {
+                            "planet": "Saturn",
+                            "score": 34.5,
+                            "breakdown": {
+                                "dasha": 40,
+                                "transit": 80,
+                                "strength": 45,
+                                "aspect": 60,
+                                "motion": 50
+                            },
+                            "weighted_components": {
+                                "dasha": 14.0,
+                                "transit": 20.0,
+                                "strength": 9.0,
+                                "aspect": 7.2,
+                                "motion": 4.0
+                            }
+                        }
+                    },
+                    "calculation_date": "2026-03-20T12:00:00"
                 }
             }
         }
