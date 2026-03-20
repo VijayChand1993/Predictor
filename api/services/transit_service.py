@@ -119,6 +119,7 @@ class TransitService:
             planets[planet_enum] = TransitPlacement(
                 planet=planet_enum,
                 sign=sign,
+                sign_no=sign_num,
                 house=house,
                 degree=degree,
                 is_retrograde=is_retrograde,
@@ -186,20 +187,27 @@ class TransitService:
         """
         Generate time segments based on transit changes.
 
-        Detects sign changes for fast-moving planets (Moon, Sun, Mars, Mercury)
-        and creates segments where planetary positions are constant.
+        Detects sign changes for ALL planets (Sun, Moon, Mars, Mercury, Jupiter,
+        Venus, Saturn, Rahu, Ketu) and creates segments where planetary positions
+        are constant. This ensures that strength calculations (which depend on
+        dignity/sign placement) are accurate even when slow-moving planets change signs.
 
         Args:
             start_date: Start of date range
             end_date: End of date range
             natal_chart: Natal chart for house calculations
-            fast_planets: List of planets to track (default: Moon, Sun, Mars, Mercury)
+            fast_planets: List of planets to track (default: ALL 9 planets)
 
         Returns:
             List of TimeSegment objects
         """
         if fast_planets is None:
-            fast_planets = [Planet.MOON, Planet.SUN, Planet.MARS, Planet.MERCURY]
+            # Track ALL planets to catch dignity changes for strength calculation
+            fast_planets = [
+                Planet.MOON, Planet.SUN, Planet.MARS, Planet.MERCURY,
+                Planet.JUPITER, Planet.VENUS, Planet.SATURN,
+                Planet.RAHU, Planet.KETU
+            ]
 
         segments = []
         current_date = start_date
@@ -207,6 +215,7 @@ class TransitService:
         # Get initial transit data
         current_transit = self.get_transit_data(current_date, natal_chart)
         segment_start = current_date
+        previous_transit = None  # Track previous transit for sign change detection
 
         # Iterate through date range
         while current_date <= end_date:
@@ -215,33 +224,55 @@ class TransitService:
 
             if next_date > end_date:
                 # Create final segment
+                # Detect sign changes for the first segment
+                sign_changes = None
+                if previous_transit is not None:
+                    sign_changes = []
+                    for planet in fast_planets:
+                        if previous_transit.planets[planet].sign != current_transit.planets[planet].sign:
+                            sign_changes.append(planet)
+                    if not sign_changes:
+                        sign_changes = None
+
                 segments.append(TimeSegment(
                     start_date=segment_start,
                     end_date=end_date,
-                    transit_data=current_transit
+                    transit_data=current_transit,
+                    sign_changes=sign_changes
                 ))
                 break
 
             # Get next day's transit
             next_transit = self.get_transit_data(next_date, natal_chart)
 
-            # Check if any fast planet changed sign
-            sign_changed = False
+            # Check which planets changed sign
+            changed_planets = []
             for planet in fast_planets:
                 if current_transit.planets[planet].sign != next_transit.planets[planet].sign:
-                    sign_changed = True
-                    break
+                    changed_planets.append(planet)
 
-            if sign_changed:
+            if changed_planets:
+                # Detect sign changes for this segment
+                sign_changes = None
+                if previous_transit is not None:
+                    sign_changes = []
+                    for planet in fast_planets:
+                        if previous_transit.planets[planet].sign != current_transit.planets[planet].sign:
+                            sign_changes.append(planet)
+                    if not sign_changes:
+                        sign_changes = None
+
                 # Create segment for current period
                 segments.append(TimeSegment(
                     start_date=segment_start,
                     end_date=current_date,
-                    transit_data=current_transit
+                    transit_data=current_transit,
+                    sign_changes=sign_changes
                 ))
 
                 # Start new segment
                 segment_start = next_date
+                previous_transit = current_transit
                 current_transit = next_transit
 
             current_date = next_date

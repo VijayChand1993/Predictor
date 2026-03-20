@@ -42,17 +42,19 @@ class TransitPlacement(BaseModel):
     """Represents a planet's transit position at a specific time."""
     planet: Planet = Field(..., description="The planet")
     sign: Sign = Field(..., description="Zodiac sign the planet is transiting")
+    sign_no: int = Field(..., ge=1, le=12, description="Sign number (1=Aries, 2=Taurus, ..., 12=Pisces)")
     house: int = Field(..., ge=1, le=12, description="House number relative to natal chart")
     degree: float = Field(..., ge=0, lt=30, description="Degree within the sign")
     is_retrograde: bool = Field(False, description="Whether the planet is retrograde")
     speed: float = Field(..., description="Planet's speed in degrees per day")
     motion_type: MotionType = Field(..., description="Classification of planet's motion")
-    
+
     class Config:
         json_schema_extra = {
             "example": {
                 "planet": "Moon",
                 "sign": "Cancer",
+                "sign_no": 4,
                 "house": 4,
                 "degree": 12.3,
                 "is_retrograde": False,

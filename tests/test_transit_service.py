@@ -74,6 +74,7 @@ class TestTransitService:
             placement = transit_data.planets[planet]
             assert placement.planet == planet
             assert placement.sign is not None
+            assert 1 <= placement.sign_no <= 12
             assert 1 <= placement.house <= 12
             assert 0 <= placement.degree < 30
             assert isinstance(placement.is_retrograde, bool)
@@ -281,4 +282,36 @@ class TestTransitService:
                 # Retrograde planets should have RETROGRADE motion type
                 from api.models import MotionType
                 assert placement.motion_type == MotionType.RETROGRADE
+
+    def test_all_transit_weights_calculation(self, transit_service):
+        """Test calculation of weights for all planets across all houses."""
+        # This would typically be tested via API, but we can verify the logic
+        all_weights = {}
+
+        for planet in Planet:
+            planet_weights = []
+            for house in range(1, 13):
+                weight = transit_service.calculate_transit_weight(planet, house)
+                planet_weights.append(weight)
+            all_weights[planet] = planet_weights
+
+        # Verify we have weights for all 9 planets
+        assert len(all_weights) == 9
+
+        # Verify each planet has 12 house weights
+        for planet, weights in all_weights.items():
+            assert len(weights) == 12
+
+            # All weights should be positive
+            for weight in weights:
+                assert weight > 0
+                assert weight <= 100
+
+        # Verify Jupiter has highest weights (planet_weight = 1.0)
+        jupiter_weights = all_weights[Planet.JUPITER]
+        mercury_weights = all_weights[Planet.MERCURY]
+
+        # For same house, Jupiter should have higher weight than Mercury
+        for i in range(12):
+            assert jupiter_weights[i] >= mercury_weights[i]
 

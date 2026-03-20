@@ -13,12 +13,14 @@ from api.models import (
     Dignity,
     NatalChart,
     PlanetPlacement,
+    TransitPlacement,
     StrengthBreakdown,
     PlanetStrength,
     StrengthCalculation,
     DIGNITY_SCORES,
     COMBUSTION_PENALTY,
 )
+from api.utils import calculate_dignity
 
 
 class StrengthService:
@@ -163,6 +165,67 @@ class StrengthService:
         breakdown = self.calculate_strength_breakdown(planet, placement, sun_placement)
         strength_weight = self.calculate_strength_weight(breakdown.total_strength)
         
+        return PlanetStrength(
+            planet=planet,
+            breakdown=breakdown,
+            strength_weight=strength_weight
+        )
+
+    def calculate_strength_from_transit(
+        self,
+        planet: Planet,
+        transit_placement: TransitPlacement,
+        sun_transit: TransitPlacement
+    ) -> PlanetStrength:
+        """
+        Calculate strength for a planet using transit positions.
+
+        This is used in the scoring engine to calculate dynamic strength
+        based on current transit positions rather than natal positions.
+
+        Args:
+            planet: The planet
+            transit_placement: Planet's transit position
+            sun_transit: Sun's transit position (for combustion check)
+
+        Returns:
+            PlanetStrength with breakdown and weight
+        """
+        # Calculate dignity from transit sign
+        dignity = calculate_dignity(planet, transit_placement.sign)
+        dignity_score = DIGNITY_SCORES.get(dignity, 0)
+
+        # Retrograde bonus from transit
+        is_retrograde = transit_placement.is_retrograde
+        retrograde_score = self.RETROGRADE_BONUS if is_retrograde else 0
+
+        # Combustion check using transit positions
+        is_combust = self.is_combust(
+            planet,
+            transit_placement.degree,
+            sun_transit.degree,
+            transit_placement.sign,
+            sun_transit.sign
+        )
+        combustion_score = COMBUSTION_PENALTY if is_combust else 0
+
+        # Total strength
+        total_strength = dignity_score + retrograde_score + combustion_score
+
+        # Create breakdown
+        breakdown = StrengthBreakdown(
+            dignity=dignity,
+            dignity_score=dignity_score,
+            is_retrograde=is_retrograde,
+            retrograde_score=retrograde_score,
+            is_combust=is_combust,
+            combustion_score=combustion_score,
+            total_strength=total_strength
+        )
+
+        # Calculate weight
+        strength_weight = self.calculate_strength_weight(total_strength)
+
         return PlanetStrength(
             planet=planet,
             breakdown=breakdown,

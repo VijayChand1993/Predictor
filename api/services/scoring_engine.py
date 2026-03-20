@@ -97,15 +97,27 @@ class ScoringEngine:
         else:
             transit_weight = 50.0  # Default if planet not found
         
-        # 3. Strength weight
-        sun_placement = natal_chart.planets[Planet.SUN]
-        planet_placement = natal_chart.planets[planet]
-        planet_strength = self.strength_service.calculate_planet_strength(
-            planet,
-            planet_placement,
-            sun_placement
-        )
-        strength_weight = planet_strength.strength_weight
+        # 3. Strength weight (using TRANSIT positions for dynamic calculation)
+        # Get transit placements for the planet and Sun
+        if planet in transit_data.planets and Planet.SUN in transit_data.planets:
+            transit_placement = transit_data.planets[planet]
+            sun_transit = transit_data.planets[Planet.SUN]
+            planet_strength = self.strength_service.calculate_strength_from_transit(
+                planet,
+                transit_placement,
+                sun_transit
+            )
+            strength_weight = planet_strength.strength_weight
+        else:
+            # Fallback to natal if transit data not available
+            sun_placement = natal_chart.planets[Planet.SUN]
+            planet_placement = natal_chart.planets[planet]
+            planet_strength = self.strength_service.calculate_planet_strength(
+                planet,
+                planet_placement,
+                sun_placement
+            )
+            strength_weight = planet_strength.strength_weight
         
         # 4. Aspect weight
         aspect_calculation = self.aspect_service.calculate_chart_aspects(natal_chart)

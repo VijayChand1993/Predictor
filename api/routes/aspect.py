@@ -77,7 +77,7 @@ async def calculate_aspects(request: AspectRequest) -> AspectResponse:
     description="Get planetary aspects for a specific chart"
 )
 async def get_aspects(
-    chart_id: str = PathParam(..., description="Chart identifier")
+    chart_id: str = PathParam(..., description="Chart identifier", example="04ecf146-d0e1-4e72-8c30-fb8bba03e2e5")
 ) -> AspectResponse:
     """
     Get planetary aspects for a chart.
@@ -123,7 +123,7 @@ async def get_aspects(
     description="Get aspects cast by a specific planet in a chart"
 )
 async def get_planet_aspects(
-    chart_id: str = PathParam(..., description="Chart identifier"),
+    chart_id: str = PathParam(..., description="Chart identifier", example="04ecf146-d0e1-4e72-8c30-fb8bba03e2e5"),
     planet: Planet = PathParam(..., description="Planet name")
 ) -> PlanetAspects:
     """

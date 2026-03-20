@@ -2,7 +2,7 @@
 Transit data models.
 """
 from datetime import datetime
-from typing import Dict
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 from .planet_placement import TransitPlacement
 from .enums import Planet
@@ -52,13 +52,17 @@ class TimeSegment(BaseModel):
     start_date: datetime = Field(..., description="Start of this segment")
     end_date: datetime = Field(..., description="End of this segment")
     transit_data: TransitData = Field(..., description="Transit positions during this segment")
+    sign_changes: Optional[List[Planet]] = Field(
+        None,
+        description="List of planets that changed signs at the start of this segment"
+    )
 
     @property
     def duration_days(self) -> float:
         """Calculate duration in days."""
         delta = self.end_date - self.start_date
         return delta.total_seconds() / 86400
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -68,7 +72,8 @@ class TimeSegment(BaseModel):
                 "transit_data": {
                     "date": "2026-02-01T00:00:00",
                     "planets": {}
-                }
+                },
+                "sign_changes": ["Moon", "Mars"]
             }
         }
 

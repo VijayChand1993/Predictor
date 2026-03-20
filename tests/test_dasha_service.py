@@ -137,19 +137,56 @@ class TestDashaService:
         """Test that dasha periods have correct structure."""
         if sample_chart_json is None:
             pytest.skip("Sample chart JSON not found")
-        
+
         target_date = date(1993, 4, 2)
         active_dashas = service.get_active_dashas(sample_chart_json, target_date)
-        
+
         # Check mahadasha
         assert active_dashas.mahadasha.level == "mahadasha"
         assert active_dashas.mahadasha.start_date < active_dashas.mahadasha.end_date
-        
+
         # Check antardasha
         assert active_dashas.antardasha.level == "antardasha"
         assert active_dashas.antardasha.start_date < active_dashas.antardasha.end_date
-        
+
         # Antardasha should be within mahadasha period
         assert active_dashas.antardasha.start_date >= active_dashas.mahadasha.start_date
         assert active_dashas.antardasha.end_date <= active_dashas.mahadasha.end_date
+
+    def test_calculate_all_planet_weights(self, service, sample_chart_json):
+        """Test calculating dasha weights for all planets."""
+        if sample_chart_json is None:
+            pytest.skip("Sample chart JSON not found")
+
+        # Get active dashas
+        target_date = date(1993, 4, 2)
+        active_dashas = service.get_active_dashas(sample_chart_json, target_date)
+
+        # Calculate weights for all planets
+        all_weights = {}
+        for planet in Planet:
+            weight = service.calculate_dasha_weight(planet, active_dashas)
+            all_weights[planet] = weight
+
+        # Should have weights for all 9 planets
+        assert len(all_weights) == 9
+
+        # Verify each weight
+        for planet, weight in all_weights.items():
+            assert weight.planet == planet
+            assert 0 <= weight.total_weight <= 100
+            assert weight.date == target_date
+
+        # Mahadasha lord should have highest weight (40 points minimum)
+        md_planet = active_dashas.mahadasha.planet
+        assert all_weights[md_planet].total_weight >= 40.0
+
+        # Antardasha lord should have at least 30 points
+        ad_planet = active_dashas.antardasha.planet
+        assert all_weights[ad_planet].total_weight >= 30.0
+
+        # If pratyantar exists, it should have at least 20 points
+        if active_dashas.pratyantar:
+            pd_planet = active_dashas.pratyantar.planet
+            assert all_weights[pd_planet].total_weight >= 20.0
 
