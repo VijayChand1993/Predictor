@@ -39,6 +39,9 @@ from .aspect import Aspect, PlanetAspects, AspectCalculation, AspectRequest, Asp
 # Strength data
 from .strength import StrengthBreakdown, PlanetStrength, StrengthCalculation, StrengthRequest, StrengthResponse
 
+# Motion data
+from .motion import MotionBreakdown, PlanetMotion, MotionCalculation, MotionRequest, MotionResponse
+
 # Scoring
 from .scoring import (
     ComponentBreakdown,
@@ -93,6 +96,12 @@ __all__ = [
     "StrengthCalculation",
     "StrengthRequest",
     "StrengthResponse",
+    # Motion
+    "MotionBreakdown",
+    "PlanetMotion",
+    "MotionCalculation",
+    "MotionRequest",
+    "MotionResponse",
     # Scoring
     "ComponentBreakdown",
     "WeightedComponents",

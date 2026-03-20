@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from api.routes import items, health, chart, dasha, transit, aspect, strength
+from api.routes import items, health, chart, dasha, transit, aspect, strength, motion
 
 app = FastAPI(
     title="Vedic Astrology Scoring Engine",
@@ -16,6 +16,7 @@ app.include_router(dasha.router)
 app.include_router(transit.router)
 app.include_router(aspect.router)
 app.include_router(strength.router)
+app.include_router(motion.router)
 
 
 @app.get("/")
@@ -29,7 +30,8 @@ async def root():
         "dasha_api": "/dasha",
         "transit_api": "/transit",
         "aspect_api": "/aspect",
-        "strength_api": "/strength"
+        "strength_api": "/strength",
+        "motion_api": "/motion"
     }
 
 
