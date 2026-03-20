@@ -33,6 +33,9 @@ from .dasha import DashaPeriod, ActiveDashas, DashaWeight
 # Transit data
 from .transit import TransitData, TimeSegment
 
+# Aspect data
+from .aspect import Aspect, PlanetAspects, AspectCalculation, AspectRequest, AspectResponse
+
 # Scoring
 from .scoring import (
     ComponentBreakdown,
@@ -75,6 +78,12 @@ __all__ = [
     # Transit
     "TransitData",
     "TimeSegment",
+    # Aspect
+    "Aspect",
+    "PlanetAspects",
+    "AspectCalculation",
+    "AspectRequest",
+    "AspectResponse",
     # Scoring
     "ComponentBreakdown",
     "WeightedComponents",
