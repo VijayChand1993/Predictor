@@ -36,6 +36,9 @@ from .transit import TransitData, TimeSegment
 # Aspect data
 from .aspect import Aspect, PlanetAspects, AspectCalculation, AspectRequest, AspectResponse
 
+# Strength data
+from .strength import StrengthBreakdown, PlanetStrength, StrengthCalculation, StrengthRequest, StrengthResponse
+
 # Scoring
 from .scoring import (
     ComponentBreakdown,
@@ -84,6 +87,12 @@ __all__ = [
     "AspectCalculation",
     "AspectRequest",
     "AspectResponse",
+    # Strength
+    "StrengthBreakdown",
+    "PlanetStrength",
+    "StrengthCalculation",
+    "StrengthRequest",
+    "StrengthResponse",
     # Scoring
     "ComponentBreakdown",
     "WeightedComponents",
