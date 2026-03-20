@@ -3,6 +3,8 @@ Chart API routes for natal chart generation and retrieval.
 """
 from datetime import datetime
 from typing import Optional
+from pathlib import Path as FilePath
+import re
 from fastapi import APIRouter, HTTPException, Path
 from pydantic import BaseModel, Field
 
@@ -16,6 +18,52 @@ chart_service = NatalChartService(output_dir="output")
 
 # In-memory storage for demo (replace with database in production)
 charts_db = {}
+
+
+def load_existing_charts():
+    """
+    Load all existing charts from the output folder into charts_db.
+
+    Looks for files matching pattern: chart_<uuid>.json
+    Only loads charts that are not already in charts_db.
+    """
+    output_dir = FilePath("output")
+    if not output_dir.exists():
+        return
+
+    # Pattern to match chart_<uuid>.json files
+    chart_pattern = re.compile(r'^chart_([a-f0-9\-]{36})\.json$')
+
+    loaded_count = 0
+    for file_path in output_dir.glob("chart_*.json"):
+        # Check if filename matches the pattern
+        match = chart_pattern.match(file_path.name)
+        if not match:
+            continue
+
+        # Extract UUID from filename
+        chart_id = match.group(1)
+
+        # Skip if already in database
+        if chart_id in charts_db:
+            continue
+
+        # Load the chart using the service
+        try:
+            natal_chart = chart_service.load_chart(chart_id)
+            charts_db[chart_id] = natal_chart
+            loaded_count += 1
+        except Exception as e:
+            # Skip files that can't be loaded
+            print(f"Warning: Could not load chart {chart_id}: {str(e)}")
+            continue
+
+    if loaded_count > 0:
+        print(f"Loaded {loaded_count} existing chart(s) from output folder")
+
+
+# Load existing charts on startup
+load_existing_charts()
 
 
 class ChartGenerateRequest(BaseModel):

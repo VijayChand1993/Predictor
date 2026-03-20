@@ -12,6 +12,7 @@ from jyotishganit import calculate_birth_chart, get_birth_chart_json_string
 
 from api.models import (
     BirthData,
+    Location,
     NatalChart,
     Planet,
     Sign,
@@ -95,25 +96,34 @@ class NatalChartService:
         with open(json_path, 'r') as f:
             json_data = json.load(f)
 
-        # Extract birth data from the saved chart
-        # The jyotishganit JSON doesn't store birth data, so we need to reconstruct it
-        # from the chart metadata if available, or use placeholder values
+        # Extract birth data from the jyotishganit JSON
+        person = json_data.get("person", {})
+        birth_place = person.get("birthPlace", {})
+        geo = birth_place.get("geo", {})
 
-        # For now, we'll extract what we can from the chart
-        d1_chart = json_data.get("d1Chart", {})
+        # Parse birth date
+        birth_date_str = person.get("birthDate", "")
+        try:
+            # jyotishganit stores date in ISO format with timezone
+            birth_date = datetime.fromisoformat(birth_date_str.replace('+00:00', ''))
+        except (ValueError, AttributeError):
+            birth_date = datetime.now()  # Fallback
 
-        # Try to get location from chart if available
-        # Otherwise use placeholder (this is a limitation of jyotishganit JSON)
+        # Extract location data
+        latitude = geo.get("latitude", 0.0)
+        longitude = geo.get("longitude", 0.0)
+
+        # Reconstruct birth data
         birth_data = BirthData(
-            date=datetime.now(),  # Placeholder - not stored in jyotishganit JSON
+            date=birth_date,
             location=Location(
-                latitude=0.0,  # Placeholder
-                longitude=0.0,  # Placeholder
-                city="Unknown",
-                country="Unknown",
-                timezone="UTC"
+                latitude=latitude,
+                longitude=longitude,
+                city="Unknown",  # Not stored in jyotishganit JSON
+                country="Unknown",  # Not stored in jyotishganit JSON
+                timezone="UTC"  # Default timezone
             ),
-            name="Loaded Chart"
+            name=person.get("name", "Unknown")
         )
 
         # Parse the chart
