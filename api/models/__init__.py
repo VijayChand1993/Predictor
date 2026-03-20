@@ -64,6 +64,17 @@ from .house_activation import (
     HouseActivationResponse,
 )
 
+# Timeline
+from .timeline import (
+    TimePoint,
+    PlanetTimePoint,
+    HouseTimePoint,
+    PlanetTimeline,
+    HouseTimeline,
+    PlanetInfluenceTimeline,
+    HouseActivationTimeline,
+)
+
 # Results
 from .result import TimeRange, ScoringResult
 
@@ -131,6 +142,14 @@ __all__ = [
     "HouseActivationCalculation",
     "HouseActivationRequest",
     "HouseActivationResponse",
+    # Timeline
+    "TimePoint",
+    "PlanetTimePoint",
+    "HouseTimePoint",
+    "PlanetTimeline",
+    "HouseTimeline",
+    "PlanetInfluenceTimeline",
+    "HouseActivationTimeline",
     # Results
     "TimeRange",
     "ScoringResult",
