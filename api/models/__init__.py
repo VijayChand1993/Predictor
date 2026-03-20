@@ -75,6 +75,20 @@ from .timeline import (
     HouseActivationTimeline,
 )
 
+# Visualization
+from .visualization import (
+    ChartDataPoint,
+    ChartDataset,
+    ChartVisualization,
+    HeatmapCell,
+    HeatmapVisualization,
+    PeakInfluence,
+    SignificantEvent,
+    AnalysisReport,
+    ExportFormat,
+    CSVExportMetadata,
+)
+
 # Results
 from .result import TimeRange, ScoringResult
 
@@ -150,6 +164,17 @@ __all__ = [
     "HouseTimeline",
     "PlanetInfluenceTimeline",
     "HouseActivationTimeline",
+    # Visualization
+    "ChartDataPoint",
+    "ChartDataset",
+    "ChartVisualization",
+    "HeatmapCell",
+    "HeatmapVisualization",
+    "PeakInfluence",
+    "SignificantEvent",
+    "AnalysisReport",
+    "ExportFormat",
+    "CSVExportMetadata",
     # Results
     "TimeRange",
     "ScoringResult",
