@@ -54,6 +54,16 @@ from .scoring import (
     ScoringResponse,
 )
 
+# House Activation
+from .house_activation import (
+    HouseContribution,
+    PlanetHouseContributions,
+    HouseActivation,
+    HouseActivationCalculation,
+    HouseActivationRequest,
+    HouseActivationResponse,
+)
+
 # Results
 from .result import TimeRange, ScoringResult
 
@@ -114,6 +124,13 @@ __all__ = [
     "PlanetScores",
     "ScoringRequest",
     "ScoringResponse",
+    # House Activation
+    "HouseContribution",
+    "PlanetHouseContributions",
+    "HouseActivation",
+    "HouseActivationCalculation",
+    "HouseActivationRequest",
+    "HouseActivationResponse",
     # Results
     "TimeRange",
     "ScoringResult",
