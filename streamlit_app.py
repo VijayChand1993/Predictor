@@ -166,11 +166,41 @@ if submit_button:
             heatmap_response.raise_for_status()
             heatmap_data = heatmap_response.json()
 
+            # Fetch domain analysis data
+            domain_response = requests.post(
+                f"{API_BASE_URL}/domain-analysis/calculate",
+                json={
+                    "chart_id": chart_id,
+                    "calculation_date": calculation_datetime.isoformat(),
+                    "include_subdomains": True
+                },
+                timeout=30
+            )
+            domain_response.raise_for_status()
+            domain_data = domain_response.json()
+
+            # Fetch domain timeline data
+            domain_timeline_response = requests.post(
+                f"{API_BASE_URL}/domain-analysis/timeline",
+                json={
+                    "chart_id": chart_id,
+                    "start_date": datetime.combine(start_date, datetime.min.time()).isoformat(),
+                    "end_date": datetime.combine(end_date, datetime.max.time()).isoformat(),
+                    "interval_days": interval_days,
+                    "include_events": True
+                },
+                timeout=60
+            )
+            domain_timeline_response.raise_for_status()
+            domain_timeline_data = domain_timeline_response.json()
+
             # Store in session state
             st.session_state.scoring_data = scoring_data
             st.session_state.house_data = house_data
             st.session_state.timeline_data = timeline_data
             st.session_state.heatmap_data = heatmap_data
+            st.session_state.domain_data = domain_data
+            st.session_state.domain_timeline_data = domain_timeline_data
             st.session_state.data_loaded = True
             st.session_state.chart_id = chart_id
             st.session_state.calc_datetime = calculation_datetime
@@ -253,10 +283,11 @@ if st.session_state.data_loaded:
     st.markdown("---")
 
     # Create tabs
-    tab1, tab2, tab3 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "🌟 Planet Scores",
         "🏠 House Activation",
-        "📈 Timeline & Analysis"
+        "📈 Timeline & Analysis",
+        "🎯 Domain Analysis"
     ])
 
     # ==================== TAB 1: PLANET SCORES ====================
@@ -830,6 +861,322 @@ if st.session_state.data_loaded:
                 height=350
             )
 
+    # ==================== TAB 4: DOMAIN ANALYSIS ====================
+    with tab4:
+        st.header("🎯 Life Domain Analysis")
+
+        # Get domain data from session state
+        domain_analysis = st.session_state.domain_data['domain_analysis']
+        domain_timeline = st.session_state.domain_timeline_data
+
+        # Top metrics row - Overall Life Quality and Top/Bottom Domains
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric(
+                label="Overall Life Quality",
+                value=f"{domain_analysis['overall_life_quality']:.1f}",
+                delta="Average of all domains"
+            )
+
+        with col2:
+            st.metric(
+                label="🏆 Strongest Domain",
+                value=domain_analysis['strongest_domain'],
+                delta="Top performing area"
+            )
+
+        with col3:
+            st.metric(
+                label="⚠️ Weakest Domain",
+                value=domain_analysis['weakest_domain'],
+                delta="Needs attention"
+            )
+
+        st.markdown("---")
+
+        # Multi-Line Timeline Chart
+        st.subheader("📊 Domain Trends Over Time")
+
+        # Convert timeline data to DataFrame
+        timeline_df_list = []
+        for time_point in domain_timeline['timeline']['timeline']:
+            date = time_point['date']
+            for domain_name, score in time_point['domains'].items():
+                timeline_df_list.append({
+                    'Date': date,
+                    'Score': score,
+                    'Domain': domain_name
+                })
+
+        df_domain_timeline = pd.DataFrame(timeline_df_list)
+        df_domain_timeline['Date'] = pd.to_datetime(df_domain_timeline['Date'])
+
+        # Create multi-line chart
+        fig_domain_timeline = px.line(
+            df_domain_timeline,
+            x='Date',
+            y='Score',
+            color='Domain',
+            title=f'Life Domain Scores Over Time ({start_date} to {end_date})',
+            markers=True,
+            height=500
+        )
+
+        fig_domain_timeline.update_layout(
+            xaxis_title='Date',
+            yaxis_title='Domain Score (0-100)',
+            hovermode='x unified',
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.3,
+                xanchor="center",
+                x=0.5
+            )
+        )
+
+        st.plotly_chart(fig_domain_timeline, use_container_width=True)
+
+        st.markdown("---")
+
+        # Current State Radar Chart
+        st.subheader("🎯 Current Life Balance")
+
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            # Prepare data for radar chart
+            domain_names = []
+            domain_scores = []
+
+            for domain_name, domain_info in domain_analysis['domains'].items():
+                domain_names.append(domain_name)
+                domain_scores.append(domain_info['score'])
+
+            # Create radar chart
+            fig_radar = go.Figure()
+
+            fig_radar.add_trace(go.Scatterpolar(
+                r=domain_scores,
+                theta=domain_names,
+                fill='toself',
+                name='Current State',
+                line=dict(color='rgb(99, 110, 250)', width=2),
+                fillcolor='rgba(99, 110, 250, 0.3)'
+            ))
+
+            fig_radar.update_layout(
+                polar=dict(
+                    radialaxis=dict(
+                        visible=True,
+                        range=[0, 100]
+                    )
+                ),
+                showlegend=False,
+                title="Life Balance Radar",
+                height=500
+            )
+
+            st.plotly_chart(fig_radar, use_container_width=True)
+
+        with col2:
+            st.markdown("### 📈 Domain Scores")
+            for domain_name, domain_info in sorted(
+                domain_analysis['domains'].items(),
+                key=lambda x: x[1]['score'],
+                reverse=True
+            ):
+                score = domain_info['score']
+                st.metric(
+                    label=domain_name,
+                    value=f"{score:.1f}",
+                    delta=None
+                )
+
+        st.markdown("---")
+
+        # Domain Heatmap
+        st.subheader("🔥 Domain Intensity Heatmap")
+
+        # Prepare heatmap data
+        heatmap_domains = []
+        heatmap_dates = []
+        heatmap_scores = []
+
+        for time_point in domain_timeline['timeline']['timeline']:
+            date_str = pd.to_datetime(time_point['date']).strftime('%Y-%m-%d')
+            for domain_name, score in time_point['domains'].items():
+                heatmap_domains.append(domain_name)
+                heatmap_dates.append(date_str)
+                heatmap_scores.append(score)
+
+        df_heatmap = pd.DataFrame({
+            'Domain': heatmap_domains,
+            'Date': heatmap_dates,
+            'Score': heatmap_scores
+        })
+
+        # Pivot for heatmap
+        heatmap_pivot = df_heatmap.pivot(index='Domain', columns='Date', values='Score')
+
+        fig_heatmap_domain = px.imshow(
+            heatmap_pivot,
+            labels=dict(x="Date", y="Domain", color="Score"),
+            x=heatmap_pivot.columns,
+            y=heatmap_pivot.index,
+            color_continuous_scale='RdYlGn',
+            aspect="auto",
+            title="Domain Scores Over Time"
+        )
+
+        fig_heatmap_domain.update_layout(height=400)
+        st.plotly_chart(fig_heatmap_domain, use_container_width=True)
+
+        st.markdown("---")
+
+        # Planet Drivers Panel
+        st.subheader("🌟 Planet Drivers by Domain")
+
+        st.markdown("**Top 3 planets influencing each life domain:**")
+
+        # Create columns for planet drivers
+        num_domains = len(domain_analysis['domains'])
+        cols_per_row = 2
+
+        domain_items = list(domain_analysis['domains'].items())
+
+        for i in range(0, num_domains, cols_per_row):
+            cols = st.columns(cols_per_row)
+
+            for j in range(cols_per_row):
+                idx = i + j
+                if idx < num_domains:
+                    domain_name, domain_info = domain_items[idx]
+
+                    with cols[j]:
+                        st.markdown(f"**{domain_name}**")
+                        st.markdown(f"*Score: {domain_info['score']:.1f}*")
+
+                        # Show top 3 driving planets
+                        for k, planet_driver in enumerate(domain_info['driving_planets'][:3], 1):
+                            emoji = "🥇" if k == 1 else "🥈" if k == 2 else "🥉"
+                            st.metric(
+                                label=f"{emoji} {planet_driver['planet']}",
+                                value=f"{planet_driver['contribution']:.2f}",
+                                delta=f"Score: {planet_driver['planet_score']:.1f}"
+                            )
+
+                        st.markdown("---")
+
+        # Subdomain Breakdown
+        st.subheader("📋 Subdomain Breakdown")
+
+        # Create expandable sections for each domain
+        for domain_name, domain_info in domain_analysis['domains'].items():
+            with st.expander(f"**{domain_name}** - Score: {domain_info['score']:.1f}"):
+
+                # Show house and planet contributions
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.metric(
+                        label="House Contribution",
+                        value=f"{domain_info['house_contribution']:.2f}",
+                        delta="60% weight"
+                    )
+
+                with col2:
+                    st.metric(
+                        label="Planet Contribution",
+                        value=f"{domain_info['planet_contribution']:.2f}",
+                        delta="40% weight"
+                    )
+
+                # Show subdomains if available
+                if domain_info['subdomains']:
+                    st.markdown("**Subdomains:**")
+
+                    subdomain_names = []
+                    subdomain_scores = []
+
+                    for subdomain_name, subdomain_info in domain_info['subdomains'].items():
+                        subdomain_names.append(subdomain_name)
+                        subdomain_scores.append(subdomain_info['score'])
+
+                    # Create bar chart for subdomains
+                    fig_subdomain = go.Figure(data=[
+                        go.Bar(
+                            x=subdomain_scores,
+                            y=subdomain_names,
+                            orientation='h',
+                            marker=dict(
+                                color=subdomain_scores,
+                                colorscale='RdYlGn',
+                                showscale=False
+                            )
+                        )
+                    ])
+
+                    fig_subdomain.update_layout(
+                        title=f"Subdomain Scores for {domain_name}",
+                        xaxis_title="Score",
+                        yaxis_title="Subdomain",
+                        height=max(200, len(subdomain_names) * 40)
+                    )
+
+                    st.plotly_chart(fig_subdomain, use_container_width=True)
+
+                # Show house scores
+                if domain_info['house_scores']:
+                    st.markdown("**House Activations:**")
+
+                    house_data_list = []
+                    for house_num, house_score in domain_info['house_scores'].items():
+                        house_data_list.append({
+                            'House': f"House {house_num}",
+                            'Score': house_score
+                        })
+
+                    df_houses = pd.DataFrame(house_data_list)
+                    df_houses = df_houses.sort_values('Score', ascending=False)
+
+                    st.dataframe(df_houses, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+
+        # Domain Comparison Table
+        st.subheader("📊 Domain Comparison Table")
+
+        comparison_data = []
+        for domain_name, domain_info in domain_analysis['domains'].items():
+            # Get top driving planet
+            top_planet = domain_info['driving_planets'][0]['planet'] if domain_info['driving_planets'] else "N/A"
+
+            comparison_data.append({
+                'Domain': domain_name,
+                'Score': domain_info['score'],
+                'House Contribution': domain_info['house_contribution'],
+                'Planet Contribution': domain_info['planet_contribution'],
+                'Top Driver': top_planet,
+                'Subdomains': len(domain_info['subdomains'])
+            })
+
+        df_comparison = pd.DataFrame(comparison_data)
+        df_comparison = df_comparison.sort_values('Score', ascending=False)
+
+        # Format numeric columns
+        df_comparison_formatted = df_comparison.copy()
+        df_comparison_formatted['Score'] = df_comparison_formatted['Score'].apply(lambda x: f"{x:.2f}")
+        df_comparison_formatted['House Contribution'] = df_comparison_formatted['House Contribution'].apply(lambda x: f"{x:.2f}")
+        df_comparison_formatted['Planet Contribution'] = df_comparison_formatted['Planet Contribution'].apply(lambda x: f"{x:.2f}")
+
+        st.dataframe(
+            df_comparison_formatted,
+            use_container_width=True,
+            height=350
+        )
+
 else:
     # Show instructions when no data is loaded
     st.info("👈 Please configure the settings in the sidebar and click '🚀 Generate Dashboard' to view visualizations.")
@@ -862,10 +1209,21 @@ else:
     - Statistical insights (volatility, stability)
     - Trend analysis for planets and houses
 
+    #### 🎯 Domain Analysis Tab
+    - Overall life quality score and strongest/weakest domains
+    - Multi-line timeline chart showing domain trends over time
+    - Radar chart for current life balance across all 7 domains
+    - Domain intensity heatmap over time
+    - Planet drivers panel showing top 3 influencing planets per domain
+    - Subdomain breakdown with bar charts and house activations
+    - Domain comparison table with sortable scores and contributions
+
     ### 🔗 API Endpoints Used
     - `POST /scoring/calculate` - Planet scores
     - `POST /house-activation/calculate` - House activation
     - `GET /visualization/{chart_id}/timeline` - Timeline data
     - `GET /visualization/{chart_id}/heatmap` - Heatmap data
+    - `POST /domain-analysis/calculate` - Domain analysis with subdomains
+    - `POST /domain-analysis/timeline` - Domain timeline data
     """)
 

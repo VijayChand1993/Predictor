@@ -89,6 +89,23 @@ from .visualization import (
     CSVExportMetadata,
 )
 
+# Domain Analysis
+from .domain_analysis import (
+    SubdomainScore,
+    PlanetContribution,
+    DomainScore,
+    SignificantEvent as DomainSignificantEvent,
+    DomainAnalysis,
+    DomainTimePoint,
+    DomainTimeline,
+    DomainAnalysisRequest,
+    DomainAnalysisResponse,
+    DomainTimelineRequest,
+    DomainTimelineResponse,
+    DomainDetailRequest,
+    DomainDetailResponse,
+)
+
 # Results
 from .result import TimeRange, ScoringResult
 
@@ -175,6 +192,20 @@ __all__ = [
     "AnalysisReport",
     "ExportFormat",
     "CSVExportMetadata",
+    # Domain Analysis
+    "SubdomainScore",
+    "PlanetContribution",
+    "DomainScore",
+    "DomainSignificantEvent",
+    "DomainAnalysis",
+    "DomainTimePoint",
+    "DomainTimeline",
+    "DomainAnalysisRequest",
+    "DomainAnalysisResponse",
+    "DomainTimelineRequest",
+    "DomainTimelineResponse",
+    "DomainDetailRequest",
+    "DomainDetailResponse",
     # Results
     "TimeRange",
     "ScoringResult",
