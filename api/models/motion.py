@@ -90,7 +90,7 @@ class MotionCalculation(BaseModel):
 
 class MotionRequest(BaseModel):
     """Request model for motion calculation."""
-    chart_id: str = Field(..., description="Chart identifier")
+    chart_id: str = Field(..., description="Chart identifier", example="04ecf146-d0e1-4e72-8c30-fb8bba03e2e5")
     calculation_date: datetime = Field(..., description="Date/time for motion calculation")
     
     class Config:
@@ -104,7 +104,7 @@ class MotionRequest(BaseModel):
 
 class MotionResponse(BaseModel):
     """Response model for motion calculation."""
-    chart_id: str = Field(..., description="Chart identifier")
+    chart_id: str = Field(..., description="Chart identifier", example="04ecf146-d0e1-4e72-8c30-fb8bba03e2e5")
     motions: MotionCalculation = Field(..., description="Complete motion calculation")
     
     class Config:

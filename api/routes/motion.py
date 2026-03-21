@@ -88,7 +88,7 @@ async def calculate_motions(request: MotionRequest) -> MotionResponse:
     description="Get planet motions for a specific chart at current time"
 )
 async def get_motions(
-    chart_id: str = PathParam(..., description="Chart identifier")
+    chart_id: str = PathParam(..., description="Chart identifier", example="04ecf146-d0e1-4e72-8c30-fb8bba03e2e5")
 ) -> MotionResponse:
     """
     Get planet motions for a chart at current time.
@@ -139,7 +139,7 @@ async def get_motions(
     description="Get motion for a specific planet in a chart at current time"
 )
 async def get_planet_motion(
-    chart_id: str = PathParam(..., description="Chart identifier"),
+    chart_id: str = PathParam(..., description="Chart identifier", example="04ecf146-d0e1-4e72-8c30-fb8bba03e2e5"),
     planet: Planet = PathParam(..., description="Planet name")
 ) -> PlanetMotion:
     """

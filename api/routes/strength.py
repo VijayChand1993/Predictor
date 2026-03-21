@@ -79,7 +79,7 @@ async def calculate_strengths(request: StrengthRequest) -> StrengthResponse:
     description="Get planet strengths for a specific chart"
 )
 async def get_strengths(
-    chart_id: str = PathParam(..., description="Chart identifier")
+    chart_id: str = PathParam(..., description="Chart identifier", example="04ecf146-d0e1-4e72-8c30-fb8bba03e2e5")
 ) -> StrengthResponse:
     """
     Get planet strengths for a chart.

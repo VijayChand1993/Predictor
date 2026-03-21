@@ -88,7 +88,7 @@ async def calculate_scores(request: ScoringRequest) -> ScoringResponse:
     description="Get planet scores for a specific chart at current time"
 )
 async def get_scores(
-    chart_id: str = PathParam(..., description="Chart identifier")
+    chart_id: str = PathParam(..., description="Chart identifier", example="04ecf146-d0e1-4e72-8c30-fb8bba03e2e5")
 ) -> ScoringResponse:
     """
     Get planet scores for a chart at current time.
@@ -137,7 +137,7 @@ async def get_scores(
     description="Get score for a specific planet in a chart at current time"
 )
 async def get_planet_score(
-    chart_id: str = PathParam(..., description="Chart identifier"),
+    chart_id: str = PathParam(..., description="Chart identifier", example="04ecf146-d0e1-4e72-8c30-fb8bba03e2e5"),
     planet: Planet = PathParam(..., description="Planet name")
 ) -> PlanetScore:
     """
@@ -201,7 +201,7 @@ async def get_planet_score(
     description="Get planet influence scores over a time range"
 )
 async def get_planet_timeline(
-    chart_id: str = PathParam(..., description="Chart identifier"),
+    chart_id: str = PathParam(..., description="Chart identifier", example="04ecf146-d0e1-4e72-8c30-fb8bba03e2e5"),
     start_date: datetime = Query(
         ...,
         description="Start date of time range",
@@ -281,7 +281,7 @@ async def get_planet_timeline(
     description="Get house activation scores over a time range"
 )
 async def get_house_timeline(
-    chart_id: str = PathParam(..., description="Chart identifier"),
+    chart_id: str = PathParam(..., description="Chart identifier", example="04ecf146-d0e1-4e72-8c30-fb8bba03e2e5"),
     start_date: datetime = Query(
         ...,
         description="Start date of time range",
