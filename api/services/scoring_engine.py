@@ -1,16 +1,20 @@
 """
 Core Scoring Engine for calculating planet scores.
 
-MULTIPLICATIVE MODEL WITH STRUCTURAL FIX (Phase 6):
-Complete rewrite to fix semi-additive scoring, add competition layer, and proper signal isolation.
+SOFT DASHA MODEL (Phase 7 - Zero Collapse Fix):
+Replaces hard dasha gate with soft gate to prevent zero cascade throughout the system.
 
 Formula (6-step process for each planet):
 1. Base: base = 0.5×transit + 0.3×strength + 0.15×aspect + 0.05×motion
-2. Dasha Gate: score = (dasha^1.3) × base
-3. Strength Amplification: score *= (0.7 + 0.3×strength)
-4. Planet Factor: score *= PLANET_FACTOR[planet]
-5. Event Boost: score += eventBoost (from transit service)
-6. Hard Gate & Noise Floor: if dasha < 0.1 AND transit < 0.2, score = 0; if score < 0.05, score = 0
+2. SOFT Dasha Gate: dashaFactor = 0.3 + 0.7×dasha (NOT hard gate)
+   - Non-dasha planets: 30% baseline contribution (prevents zeros)
+   - Dasha planets: 30% + 70% = 100% contribution
+3. Apply: score = base × dashaFactor
+4. Strength Amplification: score *= (0.7 + 0.3×strength)
+5. Planet Factor: score *= PLANET_FACTOR[planet]
+6. Transit Floor: if score < 5, score = score×0.5 + transit×0.2
+
+Key Fix: Soft dasha prevents zero cascade (planet=0 → house=0 → domain=0).
 
 Competition Layer (cross-planet normalization):
 1. Divide by max: score = score / max(all_scores)
@@ -113,11 +117,11 @@ class ScoringEngine:
     WEIGHT_ASPECT = 0.15     # Aspect contribution within gated sum (DECREASED from 0.20)
     WEIGHT_MOTION = 0.05     # Motion contribution within gated sum (DECREASED from 0.10)
 
-    # Enhancement parameters (Phase 6 - Structural Fix)
-    DASHA_EXPONENT = 1.3     # Dasha exponent (increased from 1.2 for stronger gating)
-    HARD_GATE_DASHA = 0.1    # Hard gate: if dasha < 0.1 AND transit < 0.2, score = 0
-    HARD_GATE_TRANSIT = 0.2  # Hard gate transit threshold
-    NOISE_FLOOR = 0.05       # If final score < 0.05, set to 0
+    # Enhancement parameters (Phase 7 - Soft Dasha / Zero Collapse Fix)
+    DASHA_BASELINE = 0.3     # Soft dasha: even non-dasha planets contribute 30% baseline
+    DASHA_MULTIPLIER = 0.7   # Soft dasha: dasha planets get additional 70% boost
+    TRANSIT_FLOOR_THRESHOLD = 5.0  # If score < 5, apply transit floor
+    TRANSIT_FLOOR_WEIGHT = 0.2     # Transit floor contribution weight
     CONTRAST_EXPONENT = 2.0  # Competition layer contrast (P^2)
 
     # Planet Factor (Phase 5): Intrinsic importance of each planet
@@ -383,15 +387,18 @@ class ScoringEngine:
 
     def calculate_raw_score(self, breakdown: ComponentBreakdown, planet: Planet = None, event_boost: float = 0.0) -> float:
         """
-        Calculate raw planet score using MULTIPLICATIVE formula (Phase 6 - Structural Fix).
+        Calculate raw planet score using SOFT DASHA GATE (Phase 7 - Zero Collapse Fix).
 
         Formula (NEW - 6 steps):
         1. Base: base = 0.5×transit + 0.3×strength + 0.15×aspect + 0.05×motion
-        2. Dasha Gate: score = (dasha^1.3) × base
-        3. Strength Amplification: score *= (0.7 + 0.3×strength)
-        4. Planet Factor: score *= PLANET_FACTOR[planet]
-        5. Event Boost: score += eventBoost (from transit service)
-        6. Hard Gate & Noise Floor: if dasha < 0.1 AND transit < 0.2, score = 0; if score < 0.05, score = 0
+        2. SOFT Dasha Gate: dashaFactor = 0.3 + 0.7×dasha (NOT hard gate - prevents zeros)
+        3. Apply: score = base × dashaFactor
+        4. Strength Amplification: score *= (0.7 + 0.3×strength)
+        5. Planet Factor: score *= PLANET_FACTOR[planet]
+        6. Transit Floor: if score < 5, score = score×0.5 + transit×0.2 (prevent collapse)
+
+        Key Change: Soft dasha means non-dasha planets still contribute (30% baseline).
+        This prevents the zero cascade: planet=0 → house=0 → domain=0.
 
         Args:
             breakdown: Component breakdown with normalized scores (0-100)
@@ -408,10 +415,6 @@ class ScoringEngine:
         aspect_norm = breakdown.aspect / 100.0
         motion_norm = breakdown.motion / 100.0
 
-        # HARD GATE: If dasha < 0.1 AND transit < 0.2, planet is completely inactive
-        if dasha_norm < self.HARD_GATE_DASHA and transit_norm < self.HARD_GATE_TRANSIT:
-            return 0.0
-
         # Step 1: Calculate base weighted sum
         base = (
             self.WEIGHT_TRANSIT * transit_norm +
@@ -420,9 +423,11 @@ class ScoringEngine:
             self.WEIGHT_MOTION * motion_norm
         )
 
-        # Step 2: Apply dasha gate with exponent (dasha^1.3)
-        dasha_gate = dasha_norm ** self.DASHA_EXPONENT
-        score = dasha_gate * base
+        # Step 2: SOFT Dasha Gate (NOT hard gate)
+        # Even planets not in dasha contribute 30% baseline
+        # This prevents zero collapse throughout the system
+        dasha_factor = 0.3 + 0.7 * dasha_norm
+        score = base * dasha_factor
 
         # Step 3: Strength amplification (NOT addition - multiplicative)
         # Score is amplified by strength: 70% base + 30% strength-dependent
@@ -437,12 +442,13 @@ class ScoringEngine:
         # Step 5: Event Boost - add (not multiply) event-based bonus
         score += event_boost
 
-        # Step 6: Noise Floor - eliminate very weak signals
-        if score < self.NOISE_FLOOR:
-            score = 0.0
+        # Step 6: Transit Floor - prevent very low scores from collapsing to zero
+        # If score is very low, add a transit-based floor to keep it alive
+        score_scaled = score * 100.0
+        if score_scaled < 5.0:
+            score_scaled = score_scaled * 0.5 + transit_norm * 100.0 * 0.2
 
-        # Scale to 0-100 range for consistency
-        return score * 100.0
+        return score_scaled
     
     def normalize_scores(
         self,
