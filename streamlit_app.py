@@ -43,6 +43,7 @@ API_BASE_URL = "http://localhost:8000"
 
 # Title
 st.title("🔮 Vedic Astrology Scoring Dashboard")
+st.info("⚡ **Powered by Unified Analysis Pipeline** - Complete astrological analysis in one API call with intelligent time segmentation and explainability!")
 st.markdown("---")
 
 # Sidebar for inputs
@@ -114,33 +115,67 @@ if submit_button:
     calculation_datetime = datetime.combine(calc_date, calc_time)
     
     # Show loading spinner
-    with st.spinner("🔄 Fetching data from API..."):
+    with st.spinner("🔄 Fetching complete analysis from unified pipeline..."):
         try:
-            # Fetch scoring data
-            scoring_response = requests.post(
-                f"{API_BASE_URL}/scoring/calculate",
+            # Use the unified pipeline endpoint for complete analysis
+            pipeline_response = requests.post(
+                f"{API_BASE_URL}/analyze/full",
                 json={
                     "chart_id": chart_id,
-                    "calculation_date": calculation_datetime.isoformat()
+                    "calculation_date": calculation_datetime.isoformat(),
+                    "include_timeline": True,
+                    "timeline_start_date": datetime.combine(start_date, datetime.min.time()).isoformat(),
+                    "timeline_end_date": datetime.combine(end_date, datetime.max.time()).isoformat(),
+                    "include_subdomains": True
                 },
-                timeout=30
+                timeout=120  # Longer timeout for complete analysis
             )
-            scoring_response.raise_for_status()
-            scoring_data = scoring_response.json()
-            
-            # Fetch house activation data
-            house_response = requests.post(
-                f"{API_BASE_URL}/house-activation/calculate",
-                json={
-                    "chart_id": chart_id,
-                    "calculation_date": calculation_datetime.isoformat()
-                },
-                timeout=30
-            )
-            house_response.raise_for_status()
-            house_data = house_response.json()
-            
-            # Fetch timeline visualization
+            pipeline_response.raise_for_status()
+            pipeline_data = pipeline_response.json()
+
+            # Extract components from pipeline response
+            scoring_data = {
+                "chart_id": pipeline_data["chart_id"],
+                "planet_scores": pipeline_data["current_planet_scores"]
+            }
+
+            house_data = {
+                "chart_id": pipeline_data["chart_id"],
+                "house_activation": pipeline_data["current_house_activation"]
+            }
+
+            domain_data = {
+                "chart_id": pipeline_data["chart_id"],
+                "domain_analysis": {
+                    "overall_life_quality": pipeline_data["current_domain_analysis"]["overall_life_quality"],
+                    "strongest_domain": pipeline_data["current_domain_analysis"]["strongest_domain"],
+                    "weakest_domain": pipeline_data["current_domain_analysis"]["weakest_domain"],
+                    "domains": pipeline_data["current_domain_analysis"]["domains"]
+                }
+            }
+
+            # Extract timeline data if available
+            if pipeline_data.get("timeline_analysis"):
+                domain_timeline_data = {
+                    "timeline": pipeline_data["timeline_analysis"]
+                }
+            else:
+                # Fallback: fetch domain timeline separately if not in pipeline
+                domain_timeline_response = requests.post(
+                    f"{API_BASE_URL}/domain-analysis/timeline",
+                    json={
+                        "chart_id": chart_id,
+                        "start_date": datetime.combine(start_date, datetime.min.time()).isoformat(),
+                        "end_date": datetime.combine(end_date, datetime.max.time()).isoformat(),
+                        "interval_days": interval_days,
+                        "include_events": True
+                    },
+                    timeout=60
+                )
+                domain_timeline_response.raise_for_status()
+                domain_timeline_data = domain_timeline_response.json()
+
+            # Fetch visualization data (still separate as these are visualization-specific)
             timeline_response = requests.get(
                 f"{API_BASE_URL}/visualization/{chart_id}/timeline",
                 params={
@@ -152,7 +187,7 @@ if submit_button:
             )
             timeline_response.raise_for_status()
             timeline_data = timeline_response.json()
-            
+
             # Fetch heatmap data
             heatmap_response = requests.get(
                 f"{API_BASE_URL}/visualization/{chart_id}/heatmap",
@@ -166,35 +201,9 @@ if submit_button:
             heatmap_response.raise_for_status()
             heatmap_data = heatmap_response.json()
 
-            # Fetch domain analysis data
-            domain_response = requests.post(
-                f"{API_BASE_URL}/domain-analysis/calculate",
-                json={
-                    "chart_id": chart_id,
-                    "calculation_date": calculation_datetime.isoformat(),
-                    "include_subdomains": True
-                },
-                timeout=30
-            )
-            domain_response.raise_for_status()
-            domain_data = domain_response.json()
-
-            # Fetch domain timeline data
-            domain_timeline_response = requests.post(
-                f"{API_BASE_URL}/domain-analysis/timeline",
-                json={
-                    "chart_id": chart_id,
-                    "start_date": datetime.combine(start_date, datetime.min.time()).isoformat(),
-                    "end_date": datetime.combine(end_date, datetime.max.time()).isoformat(),
-                    "interval_days": interval_days,
-                    "include_events": True
-                },
-                timeout=60
-            )
-            domain_timeline_response.raise_for_status()
-            domain_timeline_data = domain_timeline_response.json()
-
             # Store in session state
+            st.session_state.pipeline_data = pipeline_data  # Store complete pipeline response
+            st.session_state.pipeline_summary = pipeline_data.get("summary", {})  # Store summary
             st.session_state.scoring_data = scoring_data
             st.session_state.house_data = house_data
             st.session_state.timeline_data = timeline_data
@@ -205,7 +214,7 @@ if submit_button:
             st.session_state.chart_id = chart_id
             st.session_state.calc_datetime = calculation_datetime
 
-            st.success("✅ Data loaded successfully!")
+            st.success("✅ Complete analysis loaded successfully via unified pipeline!")
 
         except requests.exceptions.RequestException as e:
             st.error(f"❌ Error fetching data: {str(e)}")
@@ -283,12 +292,115 @@ if st.session_state.data_loaded:
     st.markdown("---")
 
     # Create tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab0, tab1, tab2, tab3, tab4 = st.tabs([
+        "⚡ Quick Analysis",
         "🌟 Planet Scores",
         "🏠 House Activation",
         "📈 Timeline & Analysis",
         "🎯 Domain Analysis"
     ])
+
+    # ==================== TAB 0: QUICK ANALYSIS ====================
+    with tab0:
+        st.header("⚡ Quick Life Analysis")
+        st.markdown("*One-shot analysis powered by the unified pipeline*")
+
+        # Get summary from pipeline
+        summary = st.session_state.get('pipeline_summary', {})
+
+        if summary:
+            # Hero metrics
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.metric(
+                    label="🌟 Overall Life Quality",
+                    value=f"{summary.get('overall_life_quality', 0):.1f}/100",
+                    help="Average score across all life domains"
+                )
+
+            with col2:
+                st.metric(
+                    label="🏆 Strongest Area",
+                    value=summary.get('strongest_domain', 'N/A'),
+                    delta=f"{summary.get('strongest_domain_score', 0):.1f}",
+                    delta_color="normal"
+                )
+
+            with col3:
+                st.metric(
+                    label="⚠️ Needs Attention",
+                    value=summary.get('weakest_domain', 'N/A'),
+                    delta=f"{summary.get('weakest_domain_score', 0):.1f}",
+                    delta_color="inverse"
+                )
+
+            st.markdown("---")
+
+            # Key Insights
+            st.subheader("💡 Top Insights")
+
+            insights = summary.get('key_insights', [])
+            if insights:
+                for i, insight in enumerate(insights[:5], 1):
+                    st.info(f"**{i}.** {insight}")
+            else:
+                st.warning("No insights available")
+
+            st.markdown("---")
+
+            # Domain Scores Overview
+            st.subheader("📊 Life Domain Scores")
+
+            domain_scores = summary.get('domain_scores', {})
+            if domain_scores:
+                # Create bar chart
+                df_domains = pd.DataFrame([
+                    {"Domain": domain, "Score": score}
+                    for domain, score in domain_scores.items()
+                ]).sort_values('Score', ascending=True)
+
+                fig_quick = px.bar(
+                    df_domains,
+                    x='Score',
+                    y='Domain',
+                    orientation='h',
+                    title='Life Domain Scores',
+                    color='Score',
+                    color_continuous_scale='RdYlGn',
+                    range_color=[0, 100],
+                    height=400
+                )
+
+                fig_quick.update_layout(
+                    xaxis_title='Score (0-100)',
+                    yaxis_title='',
+                    showlegend=False
+                )
+
+                st.plotly_chart(fig_quick, use_container_width=True)
+
+                # Domain scores table
+                st.dataframe(
+                    df_domains.sort_values('Score', ascending=False).style.background_gradient(
+                        subset=['Score'],
+                        cmap='RdYlGn',
+                        vmin=0,
+                        vmax=100
+                    ),
+                    use_container_width=True,
+                    height=300
+                )
+            else:
+                st.warning("No domain scores available")
+
+            st.markdown("---")
+
+            # Analysis metadata
+            st.caption(f"📅 Analysis generated at: {summary.get('analysis_timestamp', 'N/A')}")
+        else:
+            st.info("👆 Click 'Generate Dashboard' to see your quick analysis")
+
 
     # ==================== TAB 1: PLANET SCORES ====================
     with tab1:
@@ -534,6 +646,24 @@ if st.session_state.data_loaded:
         )
 
         st.caption("(W) = Weighted values, (R) = Raw values")
+
+        # Planet Explanations
+        st.subheader("💡 Planet Influence Explanations")
+
+        st.markdown("**Understanding why each planet has its current score:**")
+
+        # Show explanations for top 3 planets
+        top_3_planets = sorted(scores.items(), key=lambda x: x[1]["score"], reverse=True)[:3]
+
+        for idx, (planet, info) in enumerate(top_3_planets, 1):
+            emoji = "🥇" if idx == 1 else "🥈" if idx == 2 else "🥉"
+
+            with st.expander(f"{emoji} **{planet}** - Score: {info['score']:.2f}"):
+                if info.get('explanations'):
+                    for explanation in info['explanations']:
+                        st.markdown(f"• {explanation}")
+                else:
+                    st.info("No explanations available for this planet")
 
     # ==================== TAB 2: HOUSE ACTIVATION ====================
     with tab2:
@@ -895,8 +1025,37 @@ if st.session_state.data_loaded:
 
         st.markdown("---")
 
+        # Explanations Section - Key Insights
+        st.subheader("💡 Key Insights & Explanations")
+
+        # Show explanations for top 3 domains
+        sorted_domains = sorted(
+            domain_analysis['domains'].items(),
+            key=lambda x: x[1]['score'],
+            reverse=True
+        )
+
+        col1, col2, col3 = st.columns(3)
+
+        for idx, (col, (domain_name, domain_info)) in enumerate(zip([col1, col2, col3], sorted_domains[:3])):
+            with col:
+                emoji = "🏆" if idx == 0 else "🥈" if idx == 1 else "🥉"
+                st.markdown(f"### {emoji} {domain_name}")
+                st.markdown(f"**Score: {domain_info['score']:.1f}/100**")
+
+                if domain_info.get('explanations'):
+                    st.markdown("**Why this score?**")
+                    for explanation in domain_info['explanations']:
+                        st.markdown(f"• {explanation}")
+                else:
+                    st.info("No explanations available")
+
+        st.markdown("---")
+
         # Multi-Line Timeline Chart
         st.subheader("📊 Domain Trends Over Time")
+
+        st.info("💡 **Intelligent Segmentation**: Timeline uses automatic Moon/Sun sign change detection for optimal calculation points, not fixed intervals!")
 
         # Convert timeline data to DataFrame
         timeline_df_list = []
@@ -910,7 +1069,7 @@ if st.session_state.data_loaded:
                 })
 
         df_domain_timeline = pd.DataFrame(timeline_df_list)
-        df_domain_timeline['Date'] = pd.to_datetime(df_domain_timeline['Date'])
+        df_domain_timeline['Date'] = pd.to_datetime(df_domain_timeline['Date'], format='ISO8601')
 
         # Create multi-line chart
         fig_domain_timeline = px.line(
@@ -1075,6 +1234,13 @@ if st.session_state.data_loaded:
         # Create expandable sections for each domain
         for domain_name, domain_info in domain_analysis['domains'].items():
             with st.expander(f"**{domain_name}** - Score: {domain_info['score']:.1f}"):
+
+                # Show explanations first
+                if domain_info.get('explanations'):
+                    st.markdown("**📖 Detailed Explanation:**")
+                    for explanation in domain_info['explanations']:
+                        st.markdown(f"• {explanation}")
+                    st.markdown("---")
 
                 # Show house and planet contributions
                 col1, col2 = st.columns(2)

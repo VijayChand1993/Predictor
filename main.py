@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from api.routes import items, health, chart, dasha, transit, aspect, strength, motion, scoring, house_activation, visualization, domain_analysis
+from api.routes import items, health, chart, dasha, transit, aspect, strength, motion, scoring, house_activation, visualization, domain_analysis, pipeline
 
 app = FastAPI(
     title="Vedic Astrology Scoring Engine",
@@ -21,6 +21,7 @@ app.include_router(scoring.router)
 app.include_router(house_activation.router)
 app.include_router(visualization.router)
 app.include_router(domain_analysis.router)
+app.include_router(pipeline.router)
 
 
 @app.get("/")

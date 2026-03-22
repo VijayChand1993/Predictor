@@ -57,6 +57,10 @@ class PlanetScore(BaseModel):
     score: float = Field(..., ge=0, le=100, description="Final normalized score (0-100)")
     breakdown: ComponentBreakdown = Field(..., description="Raw component scores")
     weighted_components: WeightedComponents = Field(..., description="Weighted component scores")
+    explanations: List[str] = Field(
+        default_factory=list,
+        description="Human-readable explanations for this planet's score"
+    )
     
     class Config:
         json_schema_extra = {

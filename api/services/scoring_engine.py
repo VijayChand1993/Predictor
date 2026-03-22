@@ -205,6 +205,93 @@ class ScoringEngine:
             for planet, raw_score in raw_scores.items()
         }
 
+    def generate_planet_explanations(
+        self,
+        planet: Planet,
+        score: float,
+        breakdown: ComponentBreakdown,
+        weighted: WeightedComponents
+    ) -> list[str]:
+        """
+        Generate human-readable explanations for a planet's score.
+
+        Args:
+            planet: The planet
+            score: Final normalized score
+            breakdown: Component breakdown
+            weighted: Weighted components
+
+        Returns:
+            List of explanation strings
+        """
+        explanations = []
+        planet_name = planet.value
+
+        # 1. Overall score interpretation
+        if score >= 15:
+            strength = "very strong"
+        elif score >= 12:
+            strength = "strong"
+        elif score >= 9:
+            strength = "moderate"
+        elif score >= 6:
+            strength = "weak"
+        else:
+            strength = "very weak"
+
+        explanations.append(f"{planet_name} has {strength} influence with score {score:.1f}/100")
+
+        # 2. Identify dominant component
+        components = {
+            "Dasha": (breakdown.dasha, weighted.dasha, self.WEIGHT_DASHA),
+            "Transit": (breakdown.transit, weighted.transit, self.WEIGHT_TRANSIT),
+            "Strength": (breakdown.strength, weighted.strength, self.WEIGHT_STRENGTH),
+            "Aspect": (breakdown.aspect, weighted.aspect, self.WEIGHT_ASPECT),
+            "Motion": (breakdown.motion, weighted.motion, self.WEIGHT_MOTION)
+        }
+
+        # Find highest weighted component
+        max_component = max(components.items(), key=lambda x: x[1][1])
+        comp_name, (raw, weighted_val, weight) = max_component
+
+        explanations.append(
+            f"{comp_name} is the strongest factor (raw: {raw:.1f}, weighted: {weighted_val:.1f}, {weight*100:.0f}% weight)"
+        )
+
+        # 3. Dasha-specific explanation
+        if breakdown.dasha >= 70:
+            explanations.append(f"{planet_name} is in a major dasha period (Mahadasha or Antardasha)")
+        elif breakdown.dasha >= 40:
+            explanations.append(f"{planet_name} has moderate dasha influence")
+        else:
+            explanations.append(f"{planet_name} is not in an active dasha period")
+
+        # 4. Transit-specific explanation
+        if breakdown.transit >= 70:
+            explanations.append(f"{planet_name} is transiting through favorable houses")
+        elif breakdown.transit >= 40:
+            explanations.append(f"{planet_name} has moderate transit placement")
+        else:
+            explanations.append(f"{planet_name} is transiting through challenging houses")
+
+        # 5. Strength-specific explanation
+        if breakdown.strength >= 70:
+            explanations.append(f"{planet_name} is in a strong dignified position")
+        elif breakdown.strength >= 40:
+            explanations.append(f"{planet_name} has moderate positional strength")
+        else:
+            explanations.append(f"{planet_name} is in a weakened or debilitated state")
+
+        # 6. Overall interpretation
+        if score >= 12:
+            explanations.append(f"{planet_name} is highly favorable for its significations")
+        elif score >= 9:
+            explanations.append(f"{planet_name} provides moderate support")
+        else:
+            explanations.append(f"{planet_name} may present challenges or require extra effort")
+
+        return explanations
+
     def calculate_planet_scores(
         self,
         natal_chart: NatalChart,
@@ -252,13 +339,21 @@ class ScoringEngine:
         # Step 3: Normalize scores
         normalized_scores = self.normalize_scores(raw_scores)
 
-        # Step 4: Build PlanetScore objects
+        # Step 4: Build PlanetScore objects with explanations
         for planet in natal_chart.planets.keys():
+            explanations = self.generate_planet_explanations(
+                planet,
+                normalized_scores[planet],
+                breakdowns[planet],
+                weighted_components_map[planet]
+            )
+
             planet_scores[planet] = PlanetScore(
                 planet=planet,
                 score=normalized_scores[planet],
                 breakdown=breakdowns[planet],
-                weighted_components=weighted_components_map[planet]
+                weighted_components=weighted_components_map[planet],
+                explanations=explanations
             )
 
         return PlanetScores(

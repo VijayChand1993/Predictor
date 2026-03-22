@@ -31,25 +31,29 @@ from api.core.domain_config import (
 )
 from api.services.scoring_engine import ScoringEngine
 from api.services.house_activation_service import HouseActivationService
+from api.services.time_segmentation_service import TimeSegmentationService
 
 
 class DomainService:
     """Service for calculating life domain scores and analysis."""
-    
+
     def __init__(
         self,
         scoring_engine: ScoringEngine,
-        house_activation_service: HouseActivationService
+        house_activation_service: HouseActivationService,
+        time_segmentation_service: TimeSegmentationService = None
     ):
         """
         Initialize the domain service.
-        
+
         Args:
             scoring_engine: Service for calculating planet scores
             house_activation_service: Service for calculating house activations
+            time_segmentation_service: Service for intelligent time segmentation (optional)
         """
         self.scoring_engine = scoring_engine
         self.house_activation_service = house_activation_service
+        self.time_segmentation_service = time_segmentation_service or TimeSegmentationService()
     
     def calculate_domain_score(
         self,
@@ -108,16 +112,23 @@ class DomainService:
         # Identify driving planets
         driving_planets = self.identify_driving_planets(domain, planet_scores)
 
-        # Create domain score
-        return DomainScore(
+        # Create domain score (without explanations first)
+        domain_score = DomainScore(
             domain=domain,
             score=final_score,
             house_contribution=house_component,
             planet_contribution=planet_component,
             driving_planets=driving_planets,
             house_scores=house_scores,
-            subdomains={}  # Will be populated if requested
+            subdomains={},  # Will be populated if requested
+            explanations=[]
         )
+
+        # Generate explanations
+        explanations = self.generate_domain_explanations(domain, domain_score, house_activations)
+        domain_score.explanations = explanations
+
+        return domain_score
     
     def calculate_subdomain_score(
         self,
@@ -218,7 +229,127 @@ class DomainService:
         contributions.sort(key=lambda x: x.contribution, reverse=True)
 
         return contributions
-    
+
+    def generate_domain_explanations(
+        self,
+        domain: str,
+        domain_score: DomainScore,
+        house_activations: Dict[int, HouseActivation]
+    ) -> List[str]:
+        """
+        Generate human-readable explanations for why a domain score is what it is.
+
+        Args:
+            domain: Domain name
+            domain_score: The calculated domain score
+            house_activations: House activation data for detailed explanations
+
+        Returns:
+            List of explanation strings
+        """
+        explanations = []
+
+        # 1. Overall score interpretation
+        score = domain_score.score
+        if score >= 75:
+            strength = "very strong"
+        elif score >= 60:
+            strength = "strong"
+        elif score >= 45:
+            strength = "moderate"
+        elif score >= 30:
+            strength = "weak"
+        else:
+            strength = "very weak"
+
+        explanations.append(f"Overall {domain} score is {strength} at {score:.1f}/100")
+
+        # 2. House contribution explanation
+        house_contrib = domain_score.house_contribution
+        if house_contrib >= 60:
+            explanations.append(f"Houses are highly activated (contributing {house_contrib:.1f} points, 60% weight)")
+        elif house_contrib >= 40:
+            explanations.append(f"Houses are moderately activated (contributing {house_contrib:.1f} points, 60% weight)")
+        else:
+            explanations.append(f"Houses are weakly activated (contributing {house_contrib:.1f} points, 60% weight)")
+
+        # 3. Top house explanation
+        if domain_score.house_scores:
+            top_house = max(domain_score.house_scores.items(), key=lambda x: x[1])
+            house_num, house_score = top_house
+
+            # Get house meaning
+            house_meanings = {
+                1: "self and personality",
+                2: "wealth and resources",
+                3: "communication and siblings",
+                4: "home and mother",
+                5: "creativity and children",
+                6: "health and service",
+                7: "partnerships and marriage",
+                8: "transformation and inheritance",
+                9: "higher learning and fortune",
+                10: "career and status",
+                11: "gains and aspirations",
+                12: "losses and spirituality"
+            }
+
+            meaning = house_meanings.get(house_num, "life area")
+            explanations.append(f"House {house_num} ({meaning}) is most active with score {house_score:.1f}")
+
+        # 4. Planet contribution explanation
+        planet_contrib = domain_score.planet_contribution
+        if planet_contrib >= 60:
+            explanations.append(f"Planetary influences are very strong (contributing {planet_contrib:.1f} points, 40% weight)")
+        elif planet_contrib >= 40:
+            explanations.append(f"Planetary influences are moderate (contributing {planet_contrib:.1f} points, 40% weight)")
+        else:
+            explanations.append(f"Planetary influences are weak (contributing {planet_contrib:.1f} points, 40% weight)")
+
+        # 5. Top driving planets explanation
+        if domain_score.driving_planets:
+            top_planet = domain_score.driving_planets[0]
+            planet_name = top_planet.planet.value
+
+            # Planet characteristics
+            planet_roles = {
+                "Sun": "authority and vitality",
+                "Moon": "emotions and mind",
+                "Mars": "energy and action",
+                "Mercury": "intellect and communication",
+                "Jupiter": "wisdom and expansion",
+                "Venus": "relationships and beauty",
+                "Saturn": "discipline and structure",
+                "Rahu": "ambition and innovation",
+                "Ketu": "spirituality and detachment"
+            }
+
+            role = planet_roles.get(planet_name, "influence")
+            explanations.append(
+                f"{planet_name} ({role}) is the primary driver with score {top_planet.planet_score:.1f} "
+                f"and {top_planet.influence*100:.0f}% natural influence on {domain}"
+            )
+
+            # Mention second planet if significantly contributing
+            if len(domain_score.driving_planets) > 1:
+                second_planet = domain_score.driving_planets[1]
+                if second_planet.contribution >= top_planet.contribution * 0.6:  # At least 60% of top
+                    planet_name_2 = second_planet.planet.value
+                    role_2 = planet_roles.get(planet_name_2, "influence")
+                    explanations.append(
+                        f"{planet_name_2} ({role_2}) also significantly contributes with score {second_planet.planet_score:.1f}"
+                    )
+
+        # 6. Actionable insight based on score
+        if score >= 60:
+            explanations.append(f"This is a favorable time for {domain.lower()} activities")
+        elif score >= 40:
+            explanations.append(f"Moderate support for {domain.lower()} - proceed with balanced expectations")
+        else:
+            explanations.append(f"Exercise caution in {domain.lower()} matters - focus on preparation rather than action")
+
+        return explanations
+
     def calculate_all_domains(
         self,
         chart_id: str,
@@ -412,46 +543,91 @@ class DomainService:
         start_date: datetime,
         end_date: datetime,
         interval_days: int = 7,
-        include_events: bool = True
+        include_events: bool = True,
+        use_intelligent_segmentation: bool = True
     ) -> DomainTimeline:
         """
         Calculate domain scores over a time period.
+
+        Now supports intelligent segmentation based on Moon/Sun sign changes
+        for more accurate timeline analysis.
 
         Args:
             chart_id: Chart identifier
             start_date: Start of timeline
             end_date: End of timeline
-            interval_days: Days between data points (default: 7)
+            interval_days: Days between data points (default: 7, used only if intelligent segmentation is disabled)
             include_events: Whether to include significant events
+            use_intelligent_segmentation: Use Moon/Sun transitions instead of fixed intervals (default: True)
 
         Returns:
             DomainTimeline with scores at each interval
         """
+        from api.routes.chart import charts_db
+
         timeline_points = []
 
-        # Calculate domain scores at each interval
-        current_date = start_date
-        interval = timedelta(days=interval_days)
+        # Get natal chart for segmentation
+        if chart_id not in charts_db:
+            raise ValueError(f"Chart {chart_id} not found")
 
-        while current_date <= end_date:
-            # Calculate all domains for this date
-            domain_analysis = self.calculate_all_domains(
-                chart_id=chart_id,
-                calculation_date=current_date,
-                include_subdomains=False  # Don't include subdomains in timeline for performance
+        natal_chart = charts_db[chart_id]
+
+        if use_intelligent_segmentation:
+            # Use intelligent segmentation based on Moon/Sun transitions
+            segments = self.time_segmentation_service.generate_segments(
+                start_date=start_date,
+                end_date=end_date,
+                natal_chart=natal_chart,
+                track_planets=[Planet.MOON, Planet.SUN],
+                max_segment_days=7.0
             )
 
-            # Create time point
-            time_point = DomainTimePoint(
-                date=current_date,
-                domains={
-                    domain: score.score
-                    for domain, score in domain_analysis.domains.items()
-                }
-            )
+            # Calculate domain scores at segment midpoints
+            for segment in segments:
+                calculation_date = segment.midpoint()
 
-            timeline_points.append(time_point)
-            current_date += interval
+                # Calculate all domains for this date
+                domain_analysis = self.calculate_all_domains(
+                    chart_id=chart_id,
+                    calculation_date=calculation_date,
+                    include_subdomains=False  # Don't include subdomains in timeline for performance
+                )
+
+                # Create time point
+                time_point = DomainTimePoint(
+                    date=calculation_date,
+                    domains={
+                        domain: score.score
+                        for domain, score in domain_analysis.domains.items()
+                    }
+                )
+
+                timeline_points.append(time_point)
+        else:
+            # Use fixed interval (legacy mode)
+            current_date = start_date
+            interval = timedelta(days=interval_days)
+
+            while current_date <= end_date:
+                # Calculate all domains for this date
+                domain_analysis = self.calculate_all_domains(
+                    chart_id=chart_id,
+                    calculation_date=current_date,
+                    include_subdomains=False  # Don't include subdomains in timeline for performance
+                )
+
+                # Create time point
+                time_point = DomainTimePoint(
+                    date=current_date,
+                    domains={
+                        domain: score.score
+                        for domain, score in domain_analysis.domains.items()
+                    }
+                )
+
+                timeline_points.append(time_point)
+                current_date += interval
 
         # Detect significant events if requested
         events = []

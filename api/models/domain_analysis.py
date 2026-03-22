@@ -61,6 +61,10 @@ class DomainScore(BaseModel):
         default_factory=dict,
         description="Subdomain scores within this domain"
     )
+    explanations: List[str] = Field(
+        default_factory=list,
+        description="Human-readable explanations for why this score is what it is"
+    )
     
     class Config:
         json_schema_extra = {
