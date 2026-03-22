@@ -1,26 +1,40 @@
 """
 Core Scoring Engine for calculating planet scores.
 
-MULTIPLICATIVE MODEL WITH ENHANCEMENTS (Phase 3+):
+MULTIPLICATIVE MODEL WITH ENHANCEMENTS (Phase 5):
 Dasha acts as a gating function - planets only matter when their dasha is active.
 
-Formula (3-step process):
-1. Base: P_raw = dasha × (0.4×transit + 0.3×strength + 0.2×aspect + 0.1×motion)
-2. Activation Gate: if dasha < 15, multiply by 0.2 (suppress weak signals)
-3. Contrast Boost: P_raw = P_raw ** 1.5 (amplify differences)
-4. Normalize: P = 100 × P_raw / Σ P_raw (sum to 100)
+Formula (5-step process):
+1. Base: P_raw = (dasha^1.2) × (0.5×transit + 0.3×strength + 0.15×aspect + 0.05×motion)
+2. Activation Gate: if dasha < 10, multiply by 0.2 (suppress weak signals)
+3. Contrast Boost: P_raw = P_raw ** 1.7 (amplify differences)
+4. Planet Factor: P_raw *= PLANET_FACTOR[planet] (intrinsic importance)
+5. Normalize: P = 100 × P_raw / Σ P_raw (sum to 100)
 
 This means:
 - If dasha = 0 (planet not in dasha), score ≈ 0 (planet inactive)
-- If dasha < 15 (very weak dasha), score is heavily suppressed (×0.2)
+- If dasha < 10 (very weak dasha), score is heavily suppressed (×0.2)
 - If dasha = 100 (all dasha levels match), score = full weighted sum
-- Contrast boost (^1.5) makes strong planets stronger, weak planets weaker
+- Dasha exponent (^1.2) slightly amplifies strong dasha periods
+- Contrast boost (^1.7) makes strong planets stronger, weak planets weaker
+- Planet factor (0.75-1.25) adjusts for intrinsic importance
 
 Component Weights (within the gated sum):
-- Transit: 40% - Where the planet is transiting
+- Transit: 50% - Where the planet is transiting (INCREASED)
 - Strength: 30% - Dignity, retrograde, combustion
-- Aspect: 20% - Houses the planet aspects
-- Motion: 10% - Retrograde/direct motion speed
+- Aspect: 15% - Houses the planet aspects (DECREASED)
+- Motion: 5% - Retrograde/direct motion speed (DECREASED)
+
+Planet Factors (intrinsic importance):
+- Saturn: 1.25 (slowest, most karmic)
+- Jupiter: 1.20 (great benefic, slow)
+- Rahu: 1.15 (shadow planet, karmic)
+- Ketu: 1.10 (shadow planet, spiritual)
+- Mars: 1.00 (baseline, medium speed)
+- Sun: 0.95 (fast, but important - soul)
+- Venus: 0.90 (fast benefic)
+- Mercury: 0.85 (very fast, changeable)
+- Moon: 0.75 (fastest, most changeable - mind)
 
 PHASE 1 CHANGES:
 - Default values changed from 50.0 to 0.0 (eliminates noise floor)
@@ -32,15 +46,22 @@ PHASE 2 CHANGES (Normalization):
 PHASE 3 CHANGES (Multiplicative Model):
 - Dasha now gates all other components (multiplicative, not additive)
 - Aspect component restored (20% of gated sum)
-- New weight distribution: Transit 40%, Strength 30%, Aspect 20%, Motion 10%
+- Weight distribution: Transit 40%, Strength 30%, Aspect 20%, Motion 10%
 
-PHASE 3+ CHANGES (Activation Gate + Contrast Boost):
-- Activation gate: Suppress planets with dasha < 15 (×0.2 penalty)
-- Contrast boost: Apply P^1.5 to amplify differences between planets
-- Better differentiation between dominant and weak planets
+PHASE 4 CHANGES (Refined Formula):
+- Dasha exponent: dasha^1.2 (amplifies strong dasha periods)
+- Rebalanced weights: Transit 50%, Strength 30%, Aspect 15%, Motion 5%
+- Activation gate threshold: dasha < 10 (was 15)
+- Contrast boost exponent: P^1.7 (was 1.5) - stronger amplification
+
+PHASE 5 CHANGES (Planet Factor):
+- Planet factor: Intrinsic importance based on speed and traditional hierarchy
+- Slow planets (Saturn, Jupiter) get higher factors (1.20-1.25)
+- Fast planets (Moon, Mercury) get lower factors (0.75-0.85)
+- Applied after contrast boost, before normalization
 
 Component Normalization Ranges:
-- Dasha: 0-100 → 0-1 (max = 100) - GATING FUNCTION
+- Dasha: 0-100 → 0-1 (max = 100) - GATING FUNCTION (with ^1.2 exponent)
 - Transit: 0-100 → 0-1 (max = 100)
 - Strength: 0-100 → 0-1 (max = 100)
 - Aspect: 0-100 → 0-1 (max = 100)
@@ -49,11 +70,12 @@ Component Normalization Ranges:
 Formula Steps:
 1. Normalize each component: C_norm = C_raw / C_max
 2. Scale to 0-100 for display: C_display = C_norm × 100
-3. Calculate gated sum: S = 0.4×transit + 0.3×strength + 0.2×aspect + 0.1×motion
-4. Apply dasha gate: P_raw(p) = (dasha/100) × S × 100
-5. Apply activation gate: if dasha < 15, P_raw *= 0.2
-6. Apply contrast boost: P_raw = P_raw ** 1.5
-7. Normalize across planets: P(p) = 100 × P_raw(p) / Σ P_raw(all planets)
+3. Calculate gated sum: S = 0.5×transit + 0.3×strength + 0.15×aspect + 0.05×motion
+4. Apply dasha gate with exponent: P_raw(p) = ((dasha/100)^1.2) × S × 100
+5. Apply activation gate: if dasha < 10, P_raw *= 0.2
+6. Apply contrast boost: P_raw = P_raw ** 1.7
+7. Apply planet factor: P_raw *= PLANET_FACTOR[planet]
+8. Normalize across planets: P(p) = 100 × P_raw(p) / Σ P_raw(all planets)
 """
 from datetime import datetime
 from typing import Dict
@@ -78,12 +100,34 @@ from api.services.motion_service import MotionService
 class ScoringEngine:
     """Core scoring engine for calculating planet scores."""
 
-    # MULTIPLICATIVE MODEL: Dasha gates the other components
+    # MULTIPLICATIVE MODEL (Phase 4): Dasha gates the other components
     # Weights for the gated components (must sum to 1.0)
-    WEIGHT_TRANSIT = 0.40    # Transit contribution within gated sum
+    WEIGHT_TRANSIT = 0.50    # Transit contribution within gated sum (INCREASED from 0.40)
     WEIGHT_STRENGTH = 0.30   # Strength contribution within gated sum
-    WEIGHT_ASPECT = 0.20     # Aspect contribution within gated sum (restored!)
-    WEIGHT_MOTION = 0.10     # Motion contribution within gated sum
+    WEIGHT_ASPECT = 0.15     # Aspect contribution within gated sum (DECREASED from 0.20)
+    WEIGHT_MOTION = 0.05     # Motion contribution within gated sum (DECREASED from 0.10)
+
+    # Enhancement parameters
+    DASHA_EXPONENT = 1.2     # Dasha exponent (amplifies strong dasha periods)
+    ACTIVATION_THRESHOLD = 10.0  # Dasha threshold for activation gate (was 15.0)
+    ACTIVATION_PENALTY = 0.2     # Penalty multiplier for weak dasha
+    CONTRAST_EXPONENT = 1.7      # Contrast boost exponent (was 1.5)
+
+    # Planet Factor (Phase 5): Intrinsic importance of each planet
+    # Based on traditional Vedic astrology hierarchy
+    # Slow-moving planets (Saturn, Jupiter) have more impact
+    # Fast-moving planets (Moon, Mercury) have less impact
+    PLANET_FACTOR = {
+        Planet.SATURN: 1.25,   # Slowest, most karmic
+        Planet.JUPITER: 1.20,  # Great benefic, slow
+        Planet.RAHU: 1.15,     # Shadow planet, karmic
+        Planet.KETU: 1.10,     # Shadow planet, spiritual
+        Planet.MARS: 1.00,     # Baseline (medium speed)
+        Planet.SUN: 0.95,      # Fast, but important (soul)
+        Planet.VENUS: 0.90,    # Fast benefic
+        Planet.MERCURY: 0.85,  # Very fast, changeable
+        Planet.MOON: 0.75,     # Fastest, most changeable (mind)
+    }
 
     # Component normalization ranges (for converting to 0-1 scale)
     # These represent the theoretical maximum values each component can produce
@@ -260,13 +304,21 @@ class ScoringEngine:
         # Normalize strength to 0-1, then scale to 0-100 for display
         strength_normalized = self.normalize_strength(strength_weight_raw) * 100.0
 
-        # 4. Aspect weight - RESTORED for multiplicative model
-        # Using natal aspects (static) - could be enhanced with transit aspects later
-        planet_placement = natal_chart.planets[planet]
-        aspect_weight_raw = self.aspect_service.calculate_aspect_weight(
-            planet,
-            planet_placement.house
-        )
+        # 4. Aspect weight - USING TRANSIT HOUSE (dynamic, not static natal)
+        # Signal Isolation: Aspect must use transit position, not natal position
+        if planet in transit_data.planets:
+            transit_placement = transit_data.planets[planet]
+            aspect_weight_raw = self.aspect_service.calculate_aspect_weight(
+                planet,
+                transit_placement.house  # Use TRANSIT house, not natal house
+            )
+        else:
+            # Fallback to natal if transit data not available
+            planet_placement = natal_chart.planets[planet]
+            aspect_weight_raw = self.aspect_service.calculate_aspect_weight(
+                planet,
+                planet_placement.house
+            )
 
         # Normalize aspect to 0-1, then scale to 0-100 for display
         aspect_normalized = self.normalize_aspect(aspect_weight_raw) * 100.0
@@ -322,22 +374,25 @@ class ScoringEngine:
             motion=(breakdown.motion / 100.0) * self.WEIGHT_MOTION * dasha_gate * 100.0
         )
 
-    def calculate_raw_score(self, breakdown: ComponentBreakdown) -> float:
+    def calculate_raw_score(self, breakdown: ComponentBreakdown, planet: Planet = None) -> float:
         """
         Calculate raw planet score using MULTIPLICATIVE formula with enhancements.
 
-        Formula (3 steps):
-        1. Base: P_raw = dasha × (0.4×transit + 0.3×strength + 0.2×aspect + 0.1×motion)
-        2. Activation Gate: if dasha < 15, multiply by 0.2 (suppress weak dasha signals)
-        3. Contrast Boost: P_raw = P_raw ** 1.5 (amplify differences)
+        Formula (5 steps - Phase 5):
+        1. Base: P_raw = (dasha^1.2) × (0.5×transit + 0.3×strength + 0.15×aspect + 0.05×motion)
+        2. Activation Gate: if dasha < 10, multiply by 0.2 (suppress weak dasha signals)
+        3. Contrast Boost: P_raw = P_raw ** 1.7 (amplify differences)
+        4. Planet Factor: P_raw *= PLANET_FACTOR[planet] (intrinsic importance)
+        5. Normalize: P = P_raw / sum(P_raw) (done in calculate_planet_scores)
 
         Args:
             breakdown: Component breakdown with normalized scores (0-100)
+            planet: The planet (for planet factor application)
 
         Returns:
             Raw score (before cross-planet normalization)
         """
-        # Calculate the gated sum
+        # Step 1: Calculate the gated sum with new weights
         gated_sum = (
             (breakdown.transit / 100.0) * self.WEIGHT_TRANSIT +
             (breakdown.strength / 100.0) * self.WEIGHT_STRENGTH +
@@ -345,16 +400,22 @@ class ScoringEngine:
             (breakdown.motion / 100.0) * self.WEIGHT_MOTION
         )
 
-        # Apply dasha gate
-        dasha_gate = breakdown.dasha / 100.0
+        # Apply dasha gate with exponent (dasha^1.2)
+        dasha_normalized = breakdown.dasha / 100.0
+        dasha_gate = dasha_normalized ** self.DASHA_EXPONENT
         raw_score = gated_sum * dasha_gate * 100.0
 
-        # Step 1: Activation Gate - suppress very weak dasha signals
-        if breakdown.dasha < 15.0:
-            raw_score *= 0.2
+        # Step 2: Activation Gate - suppress very weak dasha signals
+        if breakdown.dasha < self.ACTIVATION_THRESHOLD:
+            raw_score *= self.ACTIVATION_PENALTY
 
-        # Step 2: Contrast Boost - amplify differences between planets
-        raw_score = raw_score ** 1.5
+        # Step 3: Contrast Boost - amplify differences between planets
+        raw_score = raw_score ** self.CONTRAST_EXPONENT
+
+        # Step 4: Planet Factor - apply intrinsic importance
+        if planet is not None:
+            planet_factor = self.PLANET_FACTOR.get(planet, 1.0)
+            raw_score *= planet_factor
 
         return raw_score
     
@@ -515,7 +576,8 @@ class ScoringEngine:
             weighted_components_map[planet] = weighted
 
             # Calculate raw score (using breakdown, not weighted)
-            raw_score = self.calculate_raw_score(breakdown)
+            # Pass planet for planet factor application
+            raw_score = self.calculate_raw_score(breakdown, planet)
             raw_scores[planet] = raw_score
 
         # Step 3: Normalize scores

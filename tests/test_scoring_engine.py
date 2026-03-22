@@ -157,11 +157,28 @@ class TestScoringEngine:
     def test_service_initialization(self, scoring_engine):
         """Test that the service initializes correctly."""
         assert scoring_engine is not None
-        # Multiplicative model: weights for gated components
-        assert scoring_engine.WEIGHT_TRANSIT == 0.40
+        # Phase 4: Rebalanced weights for gated components
+        assert scoring_engine.WEIGHT_TRANSIT == 0.50
         assert scoring_engine.WEIGHT_STRENGTH == 0.30
-        assert scoring_engine.WEIGHT_ASPECT == 0.20
-        assert scoring_engine.WEIGHT_MOTION == 0.10
+        assert scoring_engine.WEIGHT_ASPECT == 0.15
+        assert scoring_engine.WEIGHT_MOTION == 0.05
+
+        # Verify enhancement parameters
+        assert scoring_engine.DASHA_EXPONENT == 1.2
+        assert scoring_engine.ACTIVATION_THRESHOLD == 10.0
+        assert scoring_engine.ACTIVATION_PENALTY == 0.2
+        assert scoring_engine.CONTRAST_EXPONENT == 1.7
+
+        # Phase 5: Verify planet factors
+        assert scoring_engine.PLANET_FACTOR[Planet.SATURN] == 1.25
+        assert scoring_engine.PLANET_FACTOR[Planet.JUPITER] == 1.20
+        assert scoring_engine.PLANET_FACTOR[Planet.RAHU] == 1.15
+        assert scoring_engine.PLANET_FACTOR[Planet.KETU] == 1.10
+        assert scoring_engine.PLANET_FACTOR[Planet.MARS] == 1.00
+        assert scoring_engine.PLANET_FACTOR[Planet.SUN] == 0.95
+        assert scoring_engine.PLANET_FACTOR[Planet.VENUS] == 0.90
+        assert scoring_engine.PLANET_FACTOR[Planet.MERCURY] == 0.85
+        assert scoring_engine.PLANET_FACTOR[Planet.MOON] == 0.75
 
         # Verify gated weights sum to 1.0
         total_weight = (
@@ -203,68 +220,95 @@ class TestScoringEngine:
         weighted = scoring_engine.calculate_weighted_components(breakdown)
 
         # Multiplicative formula: dasha gates the other components
+        # Note: This uses the OLD formula (linear dasha gate) for display purposes
+        # The actual scoring uses dasha^1.2 in calculate_raw_score
         # dasha_gate = 40/100 = 0.4
-        # weighted_transit = (80/100) * 0.40 * 0.4 * 100 = 12.8
+        # weighted_transit = (80/100) * 0.50 * 0.4 * 100 = 16.0
         # weighted_strength = (45/100) * 0.30 * 0.4 * 100 = 5.4
-        # weighted_aspect = (35/100) * 0.20 * 0.4 * 100 = 2.8
-        # weighted_motion = (50/100) * 0.10 * 0.4 * 100 = 2.0
+        # weighted_aspect = (35/100) * 0.15 * 0.4 * 100 = 2.1
+        # weighted_motion = (50/100) * 0.05 * 0.4 * 100 = 1.0
 
         assert weighted.dasha == 40.0  # Dasha is the gate, not weighted
-        assert abs(weighted.transit - 12.8) < 0.001
+        assert abs(weighted.transit - 16.0) < 0.001
         assert abs(weighted.strength - 5.4) < 0.001
-        assert abs(weighted.aspect - 2.8) < 0.001
-        assert abs(weighted.motion - 2.0) < 0.001
+        assert abs(weighted.aspect - 2.1) < 0.001
+        assert abs(weighted.motion - 1.0) < 0.001
 
         # Verify total (excluding dasha gate)
         total = weighted.total()
-        expected_total = 12.8 + 5.4 + 2.8 + 2.0  # 23.0
+        expected_total = 16.0 + 5.4 + 2.1 + 1.0  # 24.5
         assert abs(total - expected_total) < 0.001
 
     def test_raw_score_calculation(self, scoring_engine):
-        """Test calculating raw score using MULTIPLICATIVE formula with enhancements."""
+        """Test calculating raw score using MULTIPLICATIVE formula with enhancements (Phase 5)."""
         from api.models import ComponentBreakdown
 
         breakdown = ComponentBreakdown(
-            dasha=40.0,  # 40% dasha gate (>15, so no activation gate penalty)
+            dasha=40.0,  # 40% dasha gate (>=10, so no activation gate penalty)
             transit=80.0,
             strength=45.0,
             aspect=35.0,
             motion=50.0
         )
 
-        raw_score = scoring_engine.calculate_raw_score(breakdown)
+        # Test with Mars (planet_factor = 1.0, baseline)
+        raw_score = scoring_engine.calculate_raw_score(breakdown, Planet.MARS)
 
-        # Formula (3 steps):
-        # 1. Base: P_raw = dasha × (0.4×transit + 0.3×strength + 0.2×aspect + 0.1×motion)
-        #    gated_sum = (80/100)*0.4 + (45/100)*0.3 + (35/100)*0.2 + (50/100)*0.1
-        #              = 0.32 + 0.135 + 0.07 + 0.05 = 0.575
-        #    base_score = 0.575 * (40/100) * 100 = 23.0
-        # 2. Activation Gate: dasha=40 >= 15, so no penalty (×1.0)
-        # 3. Contrast Boost: P_raw = 23.0 ** 1.5 = 110.36
-        expected = 23.0 ** 1.5
-        assert abs(raw_score - expected) < 0.1
+        # Formula (4 steps):
+        # 1. Base: P_raw = (dasha^1.2) × (0.5×transit + 0.3×strength + 0.15×aspect + 0.05×motion)
+        #    gated_sum = (80/100)*0.5 + (45/100)*0.3 + (35/100)*0.15 + (50/100)*0.05
+        #              = 0.4 + 0.135 + 0.0525 + 0.025 = 0.6125
+        #    dasha_gate = (40/100)^1.2 = 0.4^1.2 = 0.3482
+        #    base_score = 0.6125 * 0.3482 * 100 = 21.33
+        # 2. Activation Gate: dasha=40 >= 10, so no penalty (×1.0)
+        # 3. Contrast Boost: P_raw = 21.33 ** 1.7 = 155.8
+        # 4. Planet Factor: P_raw *= 1.0 (Mars baseline) = 155.8
+        gated_sum = 0.6125
+        dasha_gate = 0.4 ** 1.2
+        base_score = gated_sum * dasha_gate * 100
+        after_contrast = base_score ** 1.7
+        expected = after_contrast * 1.0  # Mars factor
+        assert abs(raw_score - expected) < 1.0
+
+        # Test with Saturn (planet_factor = 1.25, highest)
+        raw_score_saturn = scoring_engine.calculate_raw_score(breakdown, Planet.SATURN)
+        expected_saturn = after_contrast * 1.25
+        assert abs(raw_score_saturn - expected_saturn) < 1.0
+
+        # Test with Moon (planet_factor = 0.75, lowest)
+        raw_score_moon = scoring_engine.calculate_raw_score(breakdown, Planet.MOON)
+        expected_moon = after_contrast * 0.75
+        assert abs(raw_score_moon - expected_moon) < 1.0
 
     def test_raw_score_with_activation_gate(self, scoring_engine):
-        """Test activation gate for very weak dasha."""
+        """Test activation gate for very weak dasha (Phase 5)."""
         from api.models import ComponentBreakdown
 
         breakdown = ComponentBreakdown(
-            dasha=10.0,  # <15, so activation gate applies (×0.2)
+            dasha=8.0,  # <10, so activation gate applies (×0.2)
             transit=80.0,
             strength=45.0,
             aspect=35.0,
             motion=50.0
         )
 
-        raw_score = scoring_engine.calculate_raw_score(breakdown)
+        # Test with Mars (planet_factor = 1.0)
+        raw_score = scoring_engine.calculate_raw_score(breakdown, Planet.MARS)
 
-        # Formula (3 steps):
-        # 1. Base: gated_sum = 0.575 (same as above)
-        #    base_score = 0.575 * (10/100) * 100 = 5.75
-        # 2. Activation Gate: dasha=10 < 15, so multiply by 0.2
-        #    gated_score = 5.75 * 0.2 = 1.15
-        # 3. Contrast Boost: P_raw = 1.15 ** 1.5 = 1.234
-        expected = (5.75 * 0.2) ** 1.5
+        # Formula (4 steps):
+        # 1. Base: gated_sum = 0.6125 (same as above)
+        #    dasha_gate = (8/100)^1.2 = 0.08^1.2 = 0.0548
+        #    base_score = 0.6125 * 0.0548 * 100 = 3.36
+        # 2. Activation Gate: dasha=8 < 10, so multiply by 0.2
+        #    gated_score = 3.36 * 0.2 = 0.672
+        # 3. Contrast Boost: P_raw = 0.672 ** 1.7 = 0.387
+        # 4. Planet Factor: P_raw *= 1.0 (Mars) = 0.387
+        gated_sum = 0.6125
+        dasha_gate = 0.08 ** 1.2
+        base_score = gated_sum * dasha_gate * 100
+        gated_score = base_score * 0.2
+        after_contrast = gated_score ** 1.7
+        expected = after_contrast * 1.0  # Mars factor
         assert abs(raw_score - expected) < 0.1
 
     def test_normalize_scores(self, scoring_engine):
