@@ -211,15 +211,17 @@ class TestHouseActivationService:
         assert 12 in mars_aspects  # 8th aspect from house 5
 
     def test_calculate_planet_house_contributions(self, house_activation_service, sample_chart):
-        """Test calculating house contributions for a planet."""
+        """Test calculating house contributions for a planet (Phase 8 - Transit Blending)."""
         calculation_date = datetime(2026, 3, 20, 12, 0, 0)
         planet_score = 15.8  # Example score for Jupiter
+        transit_score = 50.0  # Example transit score
 
         contributions = house_activation_service.calculate_planet_house_contributions(
             Planet.JUPITER,
             planet_score,
             sample_chart,
-            calculation_date
+            calculation_date,
+            transit_score  # Phase 8: Pass transit score
         )
 
         # Verify basic structure
@@ -227,12 +229,13 @@ class TestHouseActivationService:
         assert contributions.planet_score == planet_score
         assert len(contributions.contributions) > 0
 
-        # Verify contributions sum to planet score
+        # Phase 8: Contributions sum to effectivePlanetScore = 0.7×planetScore + 0.3×transitScore
+        effective_score = 0.7 * planet_score + 0.3 * transit_score
         total_contrib = sum(c.total_contribution for c in contributions.contributions.values())
-        assert abs(total_contrib - planet_score) < 0.001
+        assert abs(total_contrib - effective_score) < 0.001
 
     def test_aggregate_house_scores(self, house_activation_service):
-        """Test aggregating house scores from planet contributions."""
+        """Test aggregating house scores from planet contributions (Phase 8 - No Normalization)."""
         from api.models import PlanetHouseContributions, HouseContribution
 
         # Create mock planet contributions
@@ -266,12 +269,12 @@ class TestHouseActivationService:
         # Verify all houses are present
         assert len(house_activations) == 12
 
-        # Verify scores sum to 100
+        # Phase 8: Scores do NOT sum to 100 (pure accumulation, no normalization)
         total_score = sum(h.score for h in house_activations.values())
-        assert abs(total_score - 100.0) < 0.001
+        assert total_score > 0  # Just verify we have some scores
 
     def test_calculate_house_activation(self, house_activation_service, sample_chart):
-        """Test calculating complete house activation."""
+        """Test calculating complete house activation (Phase 8 - No Normalization)."""
         calculation_date = datetime(2026, 3, 20, 12, 0, 0)
 
         house_activation = house_activation_service.calculate_house_activation(
@@ -289,9 +292,10 @@ class TestHouseActivationService:
         # Verify all planets have contributions
         assert len(house_activation.planet_contributions) == len(sample_chart.planets)
 
-        # Verify house scores sum to 100
+        # Phase 8: House scores do NOT sum to 100 (pure accumulation, no normalization)
         total_score = house_activation.total_score()
-        assert abs(total_score - 100.0) < 0.001
+        assert total_score > 0  # Just verify we have some scores
+        # Each house can be up to 100, so total can exceed 100
 
         # Verify each house has valid score
         for house_num, activation in house_activation.house_activations.items():

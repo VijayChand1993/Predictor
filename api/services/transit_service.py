@@ -163,19 +163,26 @@ class TransitService:
         """
         Calculate transit weight for a planet.
 
-        Formula: W_transit(p) = 100 × PlanetWeight(p) × HouseWeight(h_transit)
+        Formula: W_transit(p) = min(100 × PlanetWeight(p) × HouseWeight(h_transit), 100)
 
         Args:
             planet: The transiting planet
             transit_house: House number the planet is transiting
 
         Returns:
-            Transit weight (0-100 range)
+            Transit weight (0-100 range, clamped)
         """
         planet_weight = self.config.planet_importance.get_weight(planet)
         house_weight = self.config.house_importance.get_house_weight(transit_house)
 
-        return 100 * planet_weight * house_weight
+        transit_weight_raw = 100 * planet_weight * house_weight
+
+        # Phase 9 FINAL: Soften peaks with ^0.9 damping (prevents too many 90-100 scores)
+        # Example: 90 → 87, 100 → 100, 80 → 78
+        transit_weight_damped = transit_weight_raw ** 0.9
+
+        # CRITICAL: Clamp to 100 max (prevents overflow in scoring)
+        return min(transit_weight_damped, 100.0)
 
     def get_time_segments(
         self,

@@ -240,9 +240,10 @@ SUBDOMAIN_MAPPING: Dict[str, Dict[str, any]] = {
 # ============================================================================
 
 # Weight distribution between house activation and planet influence
+# Phase 9: Balanced 50/50 split (house = where, planet = what)
 DOMAIN_CALCULATION_WEIGHTS = {
-    "house_weight": 0.6,      # 60% from house activation
-    "planet_weight": 0.4      # 40% from planet influence
+    "house_weight": 0.5,      # 50% from house activation (WHERE)
+    "planet_weight": 0.5      # 50% from planet influence (WHAT)
 }
 
 

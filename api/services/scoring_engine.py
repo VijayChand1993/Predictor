@@ -1,91 +1,62 @@
 """
 Core Scoring Engine for calculating planet scores.
 
-SOFT DASHA MODEL (Phase 7 - Zero Collapse Fix):
-Replaces hard dasha gate with soft gate to prevent zero cascade throughout the system.
+PHASE 9: CORRECT MULTIPLICATIVE MODEL - FINAL (Dasha Dominance Fixed)
 
 Formula (6-step process for each planet):
-1. Base: base = 0.5×transit + 0.3×strength + 0.15×aspect + 0.05×motion
-2. SOFT Dasha Gate: dashaFactor = 0.3 + 0.7×dasha (NOT hard gate)
-   - Non-dasha planets: 30% baseline contribution (prevents zeros)
-   - Dasha planets: 30% + 70% = 100% contribution
-3. Apply: score = base × dashaFactor
-4. Strength Amplification: score *= (0.7 + 0.3×strength)
-5. Planet Factor: score *= PLANET_FACTOR[planet]
-6. Transit Floor: if score < 5, score = score×0.5 + transit×0.2
+1. Base: base = 0.25×transit + 0.30×strength + 0.25×aspect + 0.20×motion
+2. Dasha Factor: dasha_factor = 0.20 + 0.80 × (dasha/100)
+   - Safety: max(dasha_factor, 0.20) to prevent zero cascade
+3. Apply dasha: score = base × dasha_factor
+4. Planet Factor: score × planet_factor (widened spread: 1.5 to 0.7)
+5. Event Boost: score + event_boost
+6. Contrast Boost: score^1.2 (spreads distribution)
+7. Final: score × 100
 
-Key Fix: Soft dasha prevents zero cascade (planet=0 → house=0 → domain=0).
+Key Principles (Phase 9 - FINAL):
+- Dasha DOMINATES (not just gates) - non-dasha planets suppressed to 20%
+- Transit weight REDUCED (0.25) - transit < dasha in importance
+- Planet factors WIDENED (Saturn 1.5, Moon 0.7) - slow planets dominate
+- Contrast boost (^1.2) - strong planets amplified, weak suppressed
+- No cross-planet normalization (absolute scoring)
 
-Competition Layer (cross-planet normalization):
-1. Divide by max: score = score / max(all_scores)
-2. Contrast boost: score = score^2
-3. Normalize to 100: score = (score / sum(all_scores)) * 100
-
-This means:
-- If dasha = 0 (planet not in dasha), score ≈ 0 (planet inactive)
-- If dasha < 10 (very weak dasha), score is heavily suppressed (×0.2)
-- If dasha = 100 (all dasha levels match), score = full weighted sum
-- Dasha exponent (^1.2) slightly amplifies strong dasha periods
-- Contrast boost (^1.7) makes strong planets stronger, weak planets weaker
-- Planet factor (0.75-1.25) adjusts for intrinsic importance
-
-Component Weights (within the gated sum):
-- Transit: 50% - Where the planet is transiting (INCREASED)
+Component Weights (base calculation, NO DASHA):
+- Transit: 25% - Where the planet is transiting (REDUCED from 0.35)
 - Strength: 30% - Dignity, retrograde, combustion
-- Aspect: 15% - Houses the planet aspects (DECREASED)
-- Motion: 5% - Retrograde/direct motion speed (DECREASED)
+- Aspect: 25% - Houses the planet aspects (INCREASED from 0.20)
+- Motion: 20% - Retrograde/direct motion speed (INCREASED from 0.15)
 
-Planet Factors (intrinsic importance):
-- Saturn: 1.25 (slowest, most karmic)
-- Jupiter: 1.20 (great benefic, slow)
-- Rahu: 1.15 (shadow planet, karmic)
-- Ketu: 1.10 (shadow planet, spiritual)
+Dasha Factor (multiplicative - FINAL):
+- Formula: 0.20 + 0.80 × dasha_normalized
+- Non-dasha planets: 20% baseline (SUPPRESSED - prevents dominance)
+- Full dasha planets: 20% + 80% = 100% (full strength)
+- This creates STRONG hierarchy: dasha planets clearly dominate
+- Safety check ensures dasha_factor >= 0.20 (NEVER zero)
+
+Planet Factors (intrinsic importance - WIDENED SPREAD):
+- Saturn: 1.50 (slowest, most karmic) - INCREASED from 1.30
+- Jupiter: 1.25 (great benefic, slow) - INCREASED from 1.20
+- Rahu: 1.20 (shadow planet, karmic) - INCREASED from 1.15
+- Ketu: 1.20 (shadow planet, spiritual) - INCREASED from 1.15
 - Mars: 1.00 (baseline, medium speed)
-- Sun: 0.95 (fast, but important - soul)
-- Venus: 0.90 (fast benefic)
-- Mercury: 0.85 (very fast, changeable)
-- Moon: 0.75 (fastest, most changeable - mind)
+- Sun: 0.85 (fast but important) - DECREASED from 0.90
+- Venus: 0.85 (fast benefic) - DECREASED from 0.90
+- Mercury: 0.80 (very fast, changeable) - DECREASED from 0.85
+- Moon: 0.70 (fastest, most changeable) - DECREASED from 0.75
 
-PHASE 1 CHANGES:
-- Default values changed from 50.0 to 0.0 (eliminates noise floor)
-
-PHASE 2 CHANGES (Normalization):
-- All components normalized to 0-1 scale before weighting
-- Ensures consistent scale across all components
-
-PHASE 3 CHANGES (Multiplicative Model):
-- Dasha now gates all other components (multiplicative, not additive)
-- Aspect component restored (20% of gated sum)
-- Weight distribution: Transit 40%, Strength 30%, Aspect 20%, Motion 10%
-
-PHASE 4 CHANGES (Refined Formula):
-- Dasha exponent: dasha^1.2 (amplifies strong dasha periods)
-- Rebalanced weights: Transit 50%, Strength 30%, Aspect 15%, Motion 5%
-- Activation gate threshold: dasha < 10 (was 15)
-- Contrast boost exponent: P^1.7 (was 1.5) - stronger amplification
-
-PHASE 5 CHANGES (Planet Factor):
-- Planet factor: Intrinsic importance based on speed and traditional hierarchy
-- Slow planets (Saturn, Jupiter) get higher factors (1.20-1.25)
-- Fast planets (Moon, Mercury) get lower factors (0.75-0.85)
-- Applied after contrast boost, before normalization
+Expected Output Ranges (Phase 9 - FINAL):
+- Dominant dasha planets (Saturn in dasha): 70-90
+- Strong dasha planets: 50-70
+- Medium planets: 25-40
+- Non-dasha planets: 10-20 (SUPPRESSED)
+- Weak planets: 5-15
 
 Component Normalization Ranges:
-- Dasha: 0-100 → 0-1 (max = 100) - GATING FUNCTION (with ^1.2 exponent)
+- Dasha: 0-100 → 0-1 (max = 100) - MULTIPLICATIVE FACTOR
 - Transit: 0-100 → 0-1 (max = 100)
 - Strength: 0-100 → 0-1 (max = 100)
 - Aspect: 0-100 → 0-1 (max = 100)
 - Motion: 0-65 → 0-1 (max = 65)
-
-Formula Steps:
-1. Normalize each component: C_norm = C_raw / C_max
-2. Scale to 0-100 for display: C_display = C_norm × 100
-3. Calculate gated sum: S = 0.5×transit + 0.3×strength + 0.15×aspect + 0.05×motion
-4. Apply dasha gate with exponent: P_raw(p) = ((dasha/100)^1.2) × S × 100
-5. Apply activation gate: if dasha < 10, P_raw *= 0.2
-6. Apply contrast boost: P_raw = P_raw ** 1.7
-7. Apply planet factor: P_raw *= PLANET_FACTOR[planet]
-8. Normalize across planets: P(p) = 100 × P_raw(p) / Σ P_raw(all planets)
 """
 from datetime import datetime
 from typing import Dict
@@ -110,33 +81,38 @@ from api.services.motion_service import MotionService
 class ScoringEngine:
     """Core scoring engine for calculating planet scores."""
 
-    # MULTIPLICATIVE MODEL (Phase 4): Dasha gates the other components
-    # Weights for the gated components (must sum to 1.0)
-    WEIGHT_TRANSIT = 0.50    # Transit contribution within gated sum (INCREASED from 0.40)
-    WEIGHT_STRENGTH = 0.30   # Strength contribution within gated sum
-    WEIGHT_ASPECT = 0.15     # Aspect contribution within gated sum (DECREASED from 0.20)
-    WEIGHT_MOTION = 0.05     # Motion contribution within gated sum (DECREASED from 0.10)
+    # MULTIPLICATIVE MODEL (Phase 9 - FINAL): Dasha is multiplicative, not additive
+    # Weights for the base components (must sum to 1.0) - NO DASHA HERE
+    # BOOSTED: Increased transit and strength to amplify base signal
+    WEIGHT_TRANSIT = 0.30    # Transit contribution (where planet is now) - INCREASED from 0.25
+    WEIGHT_STRENGTH = 0.35   # Strength contribution (dignity, combustion) - INCREASED from 0.30
+    WEIGHT_ASPECT = 0.20     # Aspect contribution (houses aspected) - REDUCED from 0.25
+    WEIGHT_MOTION = 0.15     # Motion contribution (retrograde, speed) - REDUCED from 0.20
 
-    # Enhancement parameters (Phase 7b - Decompression Fix)
-    DASHA_BASELINE = 0.3     # Soft dasha: even non-dasha planets contribute 30% baseline
-    DASHA_MULTIPLIER = 0.7   # Soft dasha: dasha planets get additional 70% boost
-    SCALE_UP_FACTOR = 1.5    # Scale up to expand range from 1-30 to 10-50
-    CONTRAST_EXPONENT = 2.0  # Competition layer contrast (P^2)
+    # Dasha parameters (Phase 9 - Multiplicative Model - FINAL - CORRECTED SCALING)
+    # Formula: dasha_factor = 0.20 + 0.80 * (50*md + 30*ad + 20*pd)/100
+    # where md, ad, pd are 0 or 1 (match or no match)
+    DASHA_BASELINE = 0.20    # Baseline for non-dasha planets (20% - suppresses non-dasha)
+    DASHA_MULTIPLIER = 0.80  # Multiplier for dasha strength (80% - amplifies dasha)
+    DASHA_MD_WEIGHT = 50.0   # Mahadasha contribution (50 points) - CORRECTED from 0.5
+    DASHA_AD_WEIGHT = 30.0   # Antardasha contribution (30 points) - CORRECTED from 0.3
+    DASHA_PD_WEIGHT = 20.0   # Pratyantar contribution (20 points) - CORRECTED from 0.2
 
-    # Planet Factor (Phase 5): Intrinsic importance of each planet
+    SCALE_UP_FACTOR = 1.0    # No artificial scale-up (removed)
+
+    # Planet Factor (Phase 9 - FINAL): Intrinsic importance of each planet
     # Based on traditional Vedic astrology hierarchy
-    # Slow-moving planets (Saturn, Jupiter) have more impact
-    # Fast-moving planets (Moon, Mercury) have less impact
+    # MAXIMUM SPREAD: Slow-moving planets dominate, fast planets heavily suppressed
     PLANET_FACTOR = {
-        Planet.SATURN: 1.25,   # Slowest, most karmic
-        Planet.JUPITER: 1.20,  # Great benefic, slow
-        Planet.RAHU: 1.15,     # Shadow planet, karmic
-        Planet.KETU: 1.10,     # Shadow planet, spiritual
+        Planet.SATURN: 1.70,   # Slowest, most karmic (INCREASED from 1.50)
+        Planet.JUPITER: 1.35,  # Great benefic, slow (INCREASED from 1.25)
+        Planet.RAHU: 1.35,     # Shadow planet, karmic (INCREASED from 1.20)
+        Planet.KETU: 1.35,     # Shadow planet, spiritual (INCREASED from 1.20)
         Planet.MARS: 1.00,     # Baseline (medium speed)
-        Planet.SUN: 0.95,      # Fast, but important (soul)
-        Planet.VENUS: 0.90,    # Fast benefic
-        Planet.MERCURY: 0.85,  # Very fast, changeable
-        Planet.MOON: 0.75,     # Fastest, most changeable (mind)
+        Planet.SUN: 0.80,      # Fast but important (DECREASED from 0.85)
+        Planet.VENUS: 0.80,    # Fast benefic (DECREASED from 0.85)
+        Planet.MERCURY: 0.75,  # Very fast, changeable (DECREASED from 0.80)
+        Planet.MOON: 0.65,     # Fastest, most changeable (DECREASED from 0.70)
     }
 
     # Component normalization ranges (for converting to 0-1 scale)
@@ -360,46 +336,47 @@ class ScoringEngine:
         breakdown: ComponentBreakdown
     ) -> WeightedComponents:
         """
-        Apply MULTIPLICATIVE formula: P_raw = dasha × (weighted sum of other components).
+        Calculate weighted components for DISPLAY ONLY (Phase 9 - CORRECTED).
 
-        This implements the gating function where dasha controls whether other
-        components matter. If dasha = 0, score = 0 regardless of other components.
+        CRITICAL: Dasha is NOT applied here - it's applied in calculate_raw_score.
+        This method is for display/debugging purposes only.
 
         Args:
             breakdown: Component breakdown with normalized scores (0-100)
 
         Returns:
-            WeightedComponents with weighted scores (after dasha gating)
+            WeightedComponents with weighted scores (NO dasha gating)
         """
-        # Apply dasha gate: multiply by dasha (0-100 scale)
-        dasha_gate = breakdown.dasha / 100.0  # Convert to 0-1
-
         # For display purposes, show individual weighted contributions
-        # (these are gated by dasha)
+        # WITHOUT dasha gating (dasha applied separately in calculate_raw_score)
         return WeightedComponents(
-            dasha=breakdown.dasha,  # Dasha is the gate, not a weighted component
-            transit=(breakdown.transit / 100.0) * self.WEIGHT_TRANSIT * dasha_gate * 100.0,
-            strength=(breakdown.strength / 100.0) * self.WEIGHT_STRENGTH * dasha_gate * 100.0,
-            aspect=(breakdown.aspect / 100.0) * self.WEIGHT_ASPECT * dasha_gate * 100.0,
-            motion=(breakdown.motion / 100.0) * self.WEIGHT_MOTION * dasha_gate * 100.0
+            dasha=breakdown.dasha,  # Dasha shown as-is (not weighted)
+            transit=(breakdown.transit / 100.0) * self.WEIGHT_TRANSIT * 100.0,
+            strength=(breakdown.strength / 100.0) * self.WEIGHT_STRENGTH * 100.0,
+            aspect=(breakdown.aspect / 100.0) * self.WEIGHT_ASPECT * 100.0,
+            motion=(breakdown.motion / 100.0) * self.WEIGHT_MOTION * 100.0
         )
 
     def calculate_raw_score(self, breakdown: ComponentBreakdown, planet: Planet = None, event_boost: float = 0.0) -> float:
         """
-        Calculate raw planet score using PURE MULTIPLICATIVE MODEL (Phase 7b - Decompression Fix).
+        Calculate raw planet score using CORRECT MULTIPLICATIVE MODEL (Phase 9 - FINAL).
 
-        Formula (NEW - 6 steps):
-        1. Base: base = 0.5×transit + 0.3×strength + 0.15×aspect + 0.05×motion
-        2. SOFT Dasha Gate: dashaFactor = 0.3 + 0.7×dasha (prevents zeros)
-        3. Apply: score = base × dashaFactor
-        4. Strength AMPLIFICATION (NOT compression): score *= (1 + 0.5×strength)
-        5. Planet Factor: score *= PLANET_FACTOR[planet]
-        6. Scale Up: score *= 1.5 (expand range from 1-30 to 10-50)
+        Formula (CORRECTED - 6 steps):
+        1. Base: base = 0.25×transit + 0.30×strength + 0.25×aspect + 0.20×motion
+        2. Dasha Factor: dasha_factor = 0.20 + 0.80 × dasha_normalized
+           - Safety: max(dasha_factor, 0.20) to prevent zero cascade
+        3. Apply dasha: score = base × dasha_factor
+        4. Planet Factor: score × planet_factor (1.5 for Saturn, 0.7 for Moon)
+        5. Event Boost: score + event_boost
+        6. Contrast Boost: score^1.2 (spreads distribution)
+        7. Final: score × 100
 
-        Key Changes:
-        - Removed compression (0.7 + 0.3×strength → 1 + 0.5×strength)
-        - Added scale-up factor (1.5×) to expand dynamic range
-        - Removed transit floor (no longer needed with amplification)
+        Key Changes (Phase 9 - FINAL):
+        - Reduced transit weight from 0.35 to 0.25 (transit < dasha)
+        - Reverted baseline to 0.20 (suppresses non-dasha planets)
+        - Widened planet factor spread (Saturn 1.5, Moon 0.7)
+        - Added ^1.2 exponent for contrast boost
+        - This creates STRONG hierarchy: dasha planets dominate clearly
 
         Args:
             breakdown: Component breakdown with normalized scores (0-100)
@@ -407,7 +384,7 @@ class ScoringEngine:
             event_boost: Event boost from transit service (sign changes, conjunctions, etc.)
 
         Returns:
-            Raw score (before competition layer normalization)
+            Raw score (0-100 range, absolute not normalized)
         """
         # Normalize components to 0-1 range
         dasha_norm = breakdown.dasha / 100.0
@@ -416,7 +393,7 @@ class ScoringEngine:
         aspect_norm = breakdown.aspect / 100.0
         motion_norm = breakdown.motion / 100.0
 
-        # Step 1: Calculate base weighted sum
+        # Step 1: Calculate base weighted sum (NO DASHA)
         base = (
             self.WEIGHT_TRANSIT * transit_norm +
             self.WEIGHT_STRENGTH * strength_norm +
@@ -424,17 +401,25 @@ class ScoringEngine:
             self.WEIGHT_MOTION * motion_norm
         )
 
-        # Step 2: SOFT Dasha Gate (NOT hard gate)
-        # Even planets not in dasha contribute 30% baseline
-        # This prevents zero collapse throughout the system
-        dasha_factor = self.DASHA_BASELINE + self.DASHA_MULTIPLIER * dasha_norm
-        score = base * dasha_factor
+        # Step 1b: Boost base energy - amplify mid-range values
+        # Example: 0.4 → 0.55, 0.6 → 0.72
+        # This increases raw signal before dasha multiplication
+        base = base ** 0.85
 
-        # Step 3: Strength AMPLIFICATION (NOT compression)
-        # Amplify instead of compress: 1 + 0.5×strength (range: 1.0 to 1.5)
-        # This expands the dynamic range instead of compressing it
-        strength_amplifier = 1.0 + 0.5 * strength_norm
-        score *= strength_amplifier
+        # Step 2: Dasha Factor (MULTIPLICATIVE, not additive)
+        # Formula: 0.20 + 0.80 × (dasha_normalized ^ 0.6)
+        # Non-linear boost: ^0.6 exponent HEAVILY amplifies dasha dominance
+        # Examples: 0.3 → 0.60 (was 0.55), 0.5 → 0.78 (was 0.75)
+        # Non-dasha planets: 20% baseline (suppressed)
+        # Full dasha planets: 20% + 80% = 100% (full strength)
+        dasha_norm_boosted = dasha_norm ** 0.6
+        dasha_factor = self.DASHA_BASELINE + self.DASHA_MULTIPLIER * dasha_norm_boosted
+
+        # Safety check: dasha_factor must NEVER be 0 (prevents zero cascade)
+        dasha_factor = max(dasha_factor, self.DASHA_BASELINE)
+
+        # Step 3: Apply dasha factor
+        score = base * dasha_factor
 
         # Step 4: Planet Factor - apply intrinsic importance
         if planet is not None:
@@ -444,9 +429,17 @@ class ScoringEngine:
         # Step 5: Event Boost - add (not multiply) event-based bonus
         score += event_boost
 
-        # Step 6: Scale Up - expand range from 1-30 to 10-50
-        # This fixes the compression problem
-        score *= self.SCALE_UP_FACTOR
+        # Step 6: Score Floor - prevent collapse to near-zero
+        # CRITICAL: Apply BEFORE exponent (exponent shrinks small values)
+        score = max(score, 0.05)
+
+        # Step 7: Conditional Contrast Boost - apply ^1.4 exponent ONLY if score > 0.3
+        # INCREASED from 1.35 to 1.4 for MAXIMUM separation
+        # This spreads distribution for strong planets without crushing weak ones
+        # For strong planets (>0.3): amplifies contrast significantly
+        # For weak planets (<0.3): preserves minimum visibility
+        if score > 0.3:
+            score = score ** 1.4
 
         # Convert to 0-100 scale
         return score * 100.0
@@ -456,51 +449,33 @@ class ScoringEngine:
         raw_scores: Dict[Planet, float]
     ) -> Dict[Planet, float]:
         """
-        Normalize planet scores with COMPETITION LAYER (Phase 6 - Structural Fix).
+        Apply soft cap to planet scores (Phase 8 - Remove Normalization Cascade).
 
-        Formula (3 steps):
-        1. Divide by max: score = score / max(all_scores)
-        2. Contrast boost: score = score^2 (amplifies differences)
-        3. Normalize to 100: score = (score / sum(all_scores)) * 100
+        REMOVED (Phase 8 Fix):
+        - Cross-planet normalization (was forcing sum to 100)
+        - Contrast boost P^2 (was creating winner-takes-all)
+        - Division by max (was compressing magnitude)
 
-        This creates competition between planets - strong planets get much stronger,
-        weak planets get much weaker.
+        NEW APPROACH:
+        - Each planet has independent absolute score
+        - Soft cap at 100 to prevent overflow
+        - No forced competition between planets
+
+        This fixes the normalization cascade that was crushing domain scores.
 
         Args:
             raw_scores: Raw scores for all planets
 
         Returns:
-            Normalized scores (sum to 100)
+            Scores with soft cap applied (independent, not summing to 100)
         """
-        # Handle edge case of zero total
-        if not raw_scores or all(s == 0 for s in raw_scores.values()):
-            # Equal distribution if all scores are zero
-            return {planet: 100.0 / len(raw_scores) for planet in raw_scores}
+        if not raw_scores:
+            return {}
 
-        # Step 1: Divide by max value (normalize to 0-1 range based on strongest planet)
-        max_score = max(raw_scores.values())
-        if max_score == 0:
-            return {planet: 100.0 / len(raw_scores) for planet in raw_scores}
-
-        normalized_to_max = {
-            planet: score / max_score
-            for planet, score in raw_scores.items()
-        }
-
-        # Step 2: Apply contrast boost (P^2) - makes strong planets stronger
-        contrasted = {
-            planet: score ** self.CONTRAST_EXPONENT
-            for planet, score in normalized_to_max.items()
-        }
-
-        # Step 3: Normalize to sum to 100
-        total_contrasted = sum(contrasted.values())
-        if total_contrasted == 0:
-            return {planet: 100.0 / len(raw_scores) for planet in raw_scores}
-
+        # Simply apply soft cap - no normalization, no contrast boost
         return {
-            planet: (score / total_contrasted) * 100.0
-            for planet, score in contrasted.items()
+            planet: min(score, 100.0)
+            for planet, score in raw_scores.items()
         }
 
     def generate_planet_explanations(

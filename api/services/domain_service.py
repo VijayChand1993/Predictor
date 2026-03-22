@@ -59,16 +59,18 @@ class DomainService:
         self,
         domain: str,
         house_activations: Dict[int, HouseActivation],
-        planet_scores: Dict[Planet, float]
+        planet_scores: Dict[Planet, float],
+        planet_transit_scores: Optional[Dict[Planet, float]] = None
     ) -> DomainScore:
         """
-        Calculate score for a single life domain (Phase 6 - STRUCTURAL FIX).
+        Calculate score for a single life domain (Phase 8 - Domain Floor).
 
         NEW APPROACH - ABSOLUTE SCORING (not normalized across domains):
         1. Calculate absolute domain score from planets and houses
-        2. Apply house amplification if house score > 60
-        3. Apply sigmoid scaling to map to 0-100 range
-        4. Clamp to 100 max
+        2. Apply domain floor: max(planetScore, 0.2×transitScore) to prevent collapse
+        3. Apply house amplification if house score > 60
+        4. Apply sigmoid scaling to map to 0-100 range
+        5. Clamp to 100 max
 
         This fixes the "domain scores < 20" problem by removing global normalization.
 
@@ -76,6 +78,7 @@ class DomainService:
             domain: Domain name (e.g., "Career / Work")
             house_activations: House activation scores (house number -> HouseActivation)
             planet_scores: Planet scores (Planet -> score)
+            planet_transit_scores: Planet transit component scores (optional, for domain floor)
 
         Returns:
             DomainScore with complete breakdown
@@ -99,34 +102,47 @@ class DomainService:
                 house_scores[house_num] = house_score
 
         # Planet contribution (direct sum, not normalized)
+        # Phase 9 FINAL: Normalize planet scores to 0-1 range before calculation
         planet_component = 0.0
         for planet, score in planet_scores.items():
             influence = get_planet_domain_influence(planet, domain)
             if influence > 0:
-                # Absolute contribution (no normalization)
-                planet_component += score * influence
+                # CRITICAL: Normalize planet score to 0-1 range (prevents domain inflation)
+                planet_score_scaled = score / 100.0
 
-        # Combine components (absolute sum, not weighted average)
-        # Scale down to reasonable range (0-2 typically)
+                # Apply domain floor: max(planetScore, 0.2×transitScore)
+                # This ensures domains don't collapse even when planets are weak
+                effective_score = planet_score_scaled
+                if planet_transit_scores and planet in planet_transit_scores:
+                    transit_floor = 0.2 * (planet_transit_scores[planet] / 100.0)
+                    effective_score = max(planet_score_scaled, transit_floor)
+
+                # Phase 9: Apply P^1.3 exponent for planet dominance
+                # Strong planets should dominate domains more than weak planets
+                planet_component += (effective_score ** 1.3) * influence
+
+        # Combine components (Phase 8 - NO DIVISION)
+        # REMOVED: / 100.0 (was crushing magnitude before sigmoid)
         house_weight = DOMAIN_CALCULATION_WEIGHTS["house_weight"]
         planet_weight = DOMAIN_CALCULATION_WEIGHTS["planet_weight"]
 
-        domain_score_raw = (house_component * house_weight + planet_component * planet_weight) / 100.0
+        domain_score_raw = house_component * house_weight + planet_component * planet_weight
+
+        # REMOVED: Double planet amplification (was causing domain inflation)
+        # Planet dominance is already handled by the ^1.3 exponent in planet_component above
 
         # Step 2: House amplification - if primary houses are strong, boost domain
         avg_house_score = sum(house_scores.values()) / len(house_scores) if house_scores else 0
         if avg_house_score > 60:
             domain_score_raw *= 1.2
 
-        # Step 3: Sigmoid scaling - map absolute score to 0-100 range (Phase 7b - Decompression)
-        # Formula: 100 × (1 - e^(-0.05 × score))
-        # This creates better spread:
-        # Raw 20 → 63, Raw 40 → 86, Raw 60 → 95
-        # (Changed from -2.0 to -0.05 for wider dynamic range)
+        # Step 3: Sigmoid scaling - map absolute score to 0-100 range (Phase 9 FINAL)
+        # Formula: 100 × (1 - e^(-0.02 × score))
+        # MAXIMUM SHARPNESS: 0.02 coefficient reveals intensity spikes
         import math
-        final_score = 100.0 * (1.0 - math.exp(-0.05 * domain_score_raw))
+        final_score = 100.0 * (1.0 - math.exp(-0.02 * domain_score_raw))
 
-        # Step 4: Clamp to 100 max
+        # Step 5: Clamp to 100 max
         final_score = min(final_score, 100.0)
 
         # Identify driving planets
@@ -183,21 +199,24 @@ class DomainService:
                 house_component += house_score * weight
 
         # Calculate planet component (absolute sum)
+        # Phase 9 FINAL: Normalize planet scores to 0-1 range
         planet_component = 0.0
         for planet_str, influence in subdomain_config["planets"].items():
             planet = Planet(planet_str)
             if planet in planet_scores:
-                planet_component += planet_scores[planet] * influence
+                # CRITICAL: Normalize to 0-1 range (prevents subdomain inflation)
+                planet_score_scaled = planet_scores[planet] / 100.0
+                planet_component += planet_score_scaled * influence
 
-        # Combine components (absolute sum, scaled down)
+        # Combine components (Phase 8 - NO DIVISION)
         house_weight = DOMAIN_CALCULATION_WEIGHTS["house_weight"]
         planet_weight = DOMAIN_CALCULATION_WEIGHTS["planet_weight"]
 
-        subdomain_score_raw = (house_component * house_weight + planet_component * planet_weight) / 100.0
+        subdomain_score_raw = house_component * house_weight + planet_component * planet_weight
 
-        # Apply sigmoid scaling (Phase 7b - Decompression)
+        # Apply sigmoid scaling (Phase 8 - Adjusted for no division)
         import math
-        final_score = 100.0 * (1.0 - math.exp(-0.05 * subdomain_score_raw))
+        final_score = 100.0 * (1.0 - math.exp(-0.01 * subdomain_score_raw))
         final_score = min(final_score, 100.0)
 
         return SubdomainScore(
@@ -401,6 +420,12 @@ class DomainService:
             for planet, score in planet_scores_result.scores.items()
         }
 
+        # Extract transit scores for domain floor (Phase 8)
+        planet_transit_scores = {
+            planet: score.breakdown.transit
+            for planet, score in planet_scores_result.scores.items()
+        }
+
         # Calculate house activations
         house_activation_result = self.house_activation_service.calculate_house_activation(
             natal_chart=natal_chart,
@@ -410,13 +435,14 @@ class DomainService:
         # Extract house activations as dict (already a dict in the result)
         house_activations = house_activation_result.house_activations
 
-        # Calculate all domains
+        # Calculate all domains (Phase 8 - with transit scores for domain floor)
         domains = {}
         for domain in LIFE_DOMAINS:
             domain_score = self.calculate_domain_score(
                 domain=domain,
                 house_activations=house_activations,
-                planet_scores=planet_scores
+                planet_scores=planet_scores,
+                planet_transit_scores=planet_transit_scores  # Phase 8: Pass transit scores
             )
 
             # Add subdomains if requested
