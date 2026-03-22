@@ -2,14 +2,32 @@
 Core Scoring Engine for calculating planet scores.
 
 Orchestrates all services to calculate final planet scores:
-- Dasha (35%)
-- Transit (25%)
-- Strength (20%)
-- Aspect (12%)
-- Motion (8%)
+- Dasha (40%) - Increased from 35%
+- Transit (30%) - Increased from 25%
+- Strength (22%) - Increased from 20%
+- Motion (8%) - Unchanged
 
-Formula: P_raw(p) = 0.35×W_dasha + 0.25×W_transit + 0.20×W_strength + 0.12×W_aspect + 0.08×W_motion
-Normalized: P(p) = 100 × P_raw(p) / Σ P_raw(all planets)
+PHASE 1 CHANGES:
+- Aspect component removed (was 12%) as it used static natal aspects
+- Default values changed from 50.0 to 0.0 (eliminates noise floor)
+- Weights redistributed: +5% to Dasha, +5% to Transit, +2% to Strength
+
+PHASE 2 CHANGES (Normalization):
+- All components normalized to 0-1 scale before weighting
+- Ensures consistent scale across all components
+- Prevents any single component from dominating due to scale differences
+
+Component Normalization Ranges:
+- Dasha: 0-100 → 0-1 (max = 100)
+- Transit: 0-100 → 0-1 (max = 100)
+- Strength: 0-100 → 0-1 (max = 100)
+- Motion: 0-65 → 0-1 (max = 65, typical range 50-65)
+
+Formula:
+1. Normalize each component: C_norm = C_raw / C_max
+2. Scale to 0-100 for display: C_display = C_norm × 100
+3. Apply weights: P_raw(p) = 0.40×C_dasha + 0.30×C_transit + 0.22×C_strength + 0.08×C_motion
+4. Normalize across planets: P(p) = 100 × P_raw(p) / Σ P_raw(all planets)
 """
 from datetime import datetime
 from typing import Dict
@@ -26,28 +44,96 @@ from api.models import (
 )
 from api.services.dasha_service import DashaService
 from api.services.transit_service import TransitService
-from api.services.aspect_service import AspectService
+# AspectService removed - static natal aspects don't belong in dynamic scoring
 from api.services.strength_service import StrengthService
 from api.services.motion_service import MotionService
 
 
 class ScoringEngine:
     """Core scoring engine for calculating planet scores."""
-    
+
     # Component weights (must sum to 1.0)
-    WEIGHT_DASHA = 0.35
-    WEIGHT_TRANSIT = 0.25
-    WEIGHT_STRENGTH = 0.20
-    WEIGHT_ASPECT = 0.12
-    WEIGHT_MOTION = 0.08
-    
+    # Aspect component removed - redistributed to other components
+    WEIGHT_DASHA = 0.40      # Was 0.35 (+0.05)
+    WEIGHT_TRANSIT = 0.30    # Was 0.25 (+0.05)
+    WEIGHT_STRENGTH = 0.22   # Was 0.20 (+0.02)
+    WEIGHT_MOTION = 0.08     # Unchanged
+
+    # Component normalization ranges (for converting to 0-1 scale)
+    # These represent the theoretical maximum values each component can produce
+    DASHA_MAX = 100.0        # Max: Mahadasha(40) + Antardasha(30) + Pratyantar(20) + Sookshma(10)
+    TRANSIT_MAX = 100.0      # Max: 100 × planet_weight(1.0) × house_weight(1.0)
+    STRENGTH_MAX = 100.0     # Max: 50 + total_strength(50) = 100
+    MOTION_MAX = 65.0        # Max: 50 + motion_modifier(15) = 65
+
     def __init__(self):
         """Initialize the scoring engine with all required services."""
         self.dasha_service = DashaService()
         self.transit_service = TransitService()
-        self.aspect_service = AspectService()
+        # aspect_service removed - static natal aspects don't belong in dynamic scoring
         self.strength_service = StrengthService()
         self.motion_service = MotionService()
+
+    def normalize_dasha(self, dasha_weight: float) -> float:
+        """
+        Normalize dasha weight to 0-1 scale.
+
+        Range: 0-100 (sum of all dasha levels)
+        Max: 100 (all 4 levels match)
+
+        Args:
+            dasha_weight: Raw dasha weight (0-100)
+
+        Returns:
+            Normalized value (0-1)
+        """
+        return dasha_weight / self.DASHA_MAX
+
+    def normalize_transit(self, transit_weight: float) -> float:
+        """
+        Normalize transit weight to 0-1 scale.
+
+        Range: 0-100 (planet_importance × house_importance × 100)
+        Max: 100 (Jupiter in 1st/4th/7th/10th house)
+
+        Args:
+            transit_weight: Raw transit weight (0-100)
+
+        Returns:
+            Normalized value (0-1)
+        """
+        return transit_weight / self.TRANSIT_MAX
+
+    def normalize_strength(self, strength_weight: float) -> float:
+        """
+        Normalize strength weight to 0-1 scale.
+
+        Range: 0-100 (50 + total_strength where total_strength is -50 to +50)
+        Max: 100 (exalted + retrograde + not combust)
+
+        Args:
+            strength_weight: Raw strength weight (0-100)
+
+        Returns:
+            Normalized value (0-1)
+        """
+        return strength_weight / self.STRENGTH_MAX
+
+    def normalize_motion(self, motion_weight: float) -> float:
+        """
+        Normalize motion weight to 0-1 scale.
+
+        Range: 50-65 for significant planets (50 + modifier where modifier is 0-15)
+        Range: 50 for non-significant planets (neutral baseline)
+        Max: 65 (fastest direct motion)
+
+        Args:
+            motion_weight: Raw motion weight (0-100, typically 50-65)
+
+        Returns:
+            Normalized value (0-1)
+        """
+        return motion_weight / self.MOTION_MAX
     
     def calculate_component_breakdown(
         self,
@@ -56,7 +142,10 @@ class ScoringEngine:
         calculation_date: datetime
     ) -> ComponentBreakdown:
         """
-        Calculate all component scores for a planet.
+        Calculate all component scores for a planet with normalization.
+
+        Phase 2 Enhancement: All components are now normalized to 0-1 scale
+        before being stored, then scaled back to 0-100 for display consistency.
 
         Args:
             planet: The planet
@@ -64,7 +153,7 @@ class ScoringEngine:
             calculation_date: Date/time for calculation
 
         Returns:
-            ComponentBreakdown with all component scores (0-100)
+            ComponentBreakdown with all component scores (0-100, normalized)
         """
         # 1. Dasha weight
         # Load chart JSON for dasha calculation
@@ -77,11 +166,14 @@ class ScoringEngine:
                 calculation_date.date()
             )
             dasha_weight_obj = self.dasha_service.calculate_dasha_weight(planet, active_dashas)
-            dasha_weight = dasha_weight_obj.total_weight
+            dasha_weight_raw = dasha_weight_obj.total_weight
         else:
-            # Default if chart JSON not found
-            dasha_weight = 50.0
-        
+            # No dasha data = no contribution (was 50.0, now 0.0 to eliminate noise floor)
+            dasha_weight_raw = 0.0
+
+        # Normalize dasha to 0-1, then scale to 0-100 for display
+        dasha_normalized = self.normalize_dasha(dasha_weight_raw) * 100.0
+
         # 2. Transit weight
         transit_data = self.transit_service.get_transit_data(
             target_date=calculation_date,
@@ -90,13 +182,17 @@ class ScoringEngine:
         )
         if planet in transit_data.planets:
             transit_placement = transit_data.planets[planet]
-            transit_weight = self.transit_service.calculate_transit_weight(
+            transit_weight_raw = self.transit_service.calculate_transit_weight(
                 planet,
                 transit_placement.house
             )
         else:
-            transit_weight = 50.0  # Default if planet not found
-        
+            # No transit data = no contribution (was 50.0, now 0.0 to eliminate noise floor)
+            transit_weight_raw = 0.0
+
+        # Normalize transit to 0-1, then scale to 0-100 for display
+        transit_normalized = self.normalize_transit(transit_weight_raw) * 100.0
+
         # 3. Strength weight (using TRANSIT positions for dynamic calculation)
         # Get transit placements for the planet and Sun
         if planet in transit_data.planets and Planet.SUN in transit_data.planets:
@@ -107,7 +203,7 @@ class ScoringEngine:
                 transit_placement,
                 sun_transit
             )
-            strength_weight = planet_strength.strength_weight
+            strength_weight_raw = planet_strength.strength_weight
         else:
             # Fallback to natal if transit data not available
             sun_placement = natal_chart.planets[Planet.SUN]
@@ -117,31 +213,33 @@ class ScoringEngine:
                 planet_placement,
                 sun_placement
             )
-            strength_weight = planet_strength.strength_weight
-        
-        # 4. Aspect weight
-        aspect_calculation = self.aspect_service.calculate_chart_aspects(natal_chart)
-        if planet in aspect_calculation.planet_aspects:
-            aspect_weight = aspect_calculation.planet_aspects[planet].aspect_weight
-        else:
-            aspect_weight = 0.0  # No aspects
-        
+            strength_weight_raw = planet_strength.strength_weight
+
+        # Normalize strength to 0-1, then scale to 0-100 for display
+        strength_normalized = self.normalize_strength(strength_weight_raw) * 100.0
+
+        # 4. Aspect weight - REMOVED (static natal aspects don't belong in dynamic scoring)
+        # The 12% weight has been redistributed to other components
+
         # 5. Motion weight
         motion_calculation = self.motion_service.calculate_chart_motions(
             natal_chart,
             calculation_date
         )
         if planet in motion_calculation.planet_motions:
-            motion_weight = motion_calculation.planet_motions[planet].motion_weight
+            motion_weight_raw = motion_calculation.planet_motions[planet].motion_weight
         else:
-            motion_weight = 50.0  # Default baseline
-        
+            # No motion data = no contribution (was 50.0, now 0.0 to eliminate noise floor)
+            motion_weight_raw = 0.0
+
+        # Normalize motion to 0-1, then scale to 0-100 for display
+        motion_normalized = self.normalize_motion(motion_weight_raw) * 100.0
+
         return ComponentBreakdown(
-            dasha=dasha_weight,
-            transit=transit_weight,
-            strength=strength_weight,
-            aspect=aspect_weight,
-            motion=motion_weight
+            dasha=dasha_normalized,
+            transit=transit_normalized,
+            strength=strength_normalized,
+            motion=motion_normalized
         )
     
     def calculate_weighted_components(
@@ -161,7 +259,6 @@ class ScoringEngine:
             dasha=breakdown.dasha * self.WEIGHT_DASHA,
             transit=breakdown.transit * self.WEIGHT_TRANSIT,
             strength=breakdown.strength * self.WEIGHT_STRENGTH,
-            aspect=breakdown.aspect * self.WEIGHT_ASPECT,
             motion=breakdown.motion * self.WEIGHT_MOTION
         )
     
@@ -246,7 +343,6 @@ class ScoringEngine:
             "Dasha": (breakdown.dasha, weighted.dasha, self.WEIGHT_DASHA),
             "Transit": (breakdown.transit, weighted.transit, self.WEIGHT_TRANSIT),
             "Strength": (breakdown.strength, weighted.strength, self.WEIGHT_STRENGTH),
-            "Aspect": (breakdown.aspect, weighted.aspect, self.WEIGHT_ASPECT),
             "Motion": (breakdown.motion, weighted.motion, self.WEIGHT_MOTION)
         }
 

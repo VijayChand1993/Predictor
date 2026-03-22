@@ -8,44 +8,51 @@ from .enums import Planet
 
 
 class ComponentBreakdown(BaseModel):
-    """Breakdown of scoring components for a planet."""
+    """Breakdown of scoring components for a planet.
+
+    NOTE: Aspect component removed as it used static natal aspects which don't
+    change over time and shouldn't be in a dynamic scoring model.
+    """
     dasha: float = Field(..., description="Dasha contribution (0-100)")
     transit: float = Field(..., description="Transit contribution (0-100)")
     strength: float = Field(..., description="Planet strength contribution (0-100)")
-    aspect: float = Field(..., description="Aspect contribution (0-100)")
     motion: float = Field(..., description="Motion/speed contribution (0-100)")
-    
+
     class Config:
         json_schema_extra = {
             "example": {
                 "dasha": 40,
                 "transit": 80,
                 "strength": 45,
-                "aspect": 60,
                 "motion": 50
             }
         }
 
 
 class WeightedComponents(BaseModel):
-    """Weighted components after applying final weights."""
-    dasha: float = Field(..., description="Weighted dasha (0.35 × W_dasha)")
-    transit: float = Field(..., description="Weighted transit (0.25 × W_transit)")
-    strength: float = Field(..., description="Weighted strength (0.20 × W_strength)")
-    aspect: float = Field(..., description="Weighted aspect (0.12 × W_aspect)")
+    """Weighted components after applying final weights.
+
+    NOTE: Aspect component removed. Weights redistributed:
+    - Dasha: 0.40 (was 0.35, +0.05)
+    - Transit: 0.30 (was 0.25, +0.05)
+    - Strength: 0.22 (was 0.20, +0.02)
+    - Motion: 0.08 (unchanged)
+    """
+    dasha: float = Field(..., description="Weighted dasha (0.40 × W_dasha)")
+    transit: float = Field(..., description="Weighted transit (0.30 × W_transit)")
+    strength: float = Field(..., description="Weighted strength (0.22 × W_strength)")
     motion: float = Field(..., description="Weighted motion (0.08 × W_motion)")
-    
+
     def total(self) -> float:
         """Calculate total of all weighted components."""
-        return self.dasha + self.transit + self.strength + self.aspect + self.motion
-    
+        return self.dasha + self.transit + self.strength + self.motion
+
     class Config:
         json_schema_extra = {
             "example": {
-                "dasha": 14.0,
-                "transit": 20.0,
-                "strength": 9.0,
-                "aspect": 7.2,
+                "dasha": 16.0,
+                "transit": 24.0,
+                "strength": 9.9,
                 "motion": 4.0
             }
         }

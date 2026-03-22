@@ -99,7 +99,6 @@ class TestScoring:
             dasha=40,
             transit=80,
             strength=45,
-            aspect=60,
             motion=50
         )
         assert breakdown.dasha == 40
@@ -108,22 +107,21 @@ class TestScoring:
     def test_weighted_components(self):
         """Test WeightedComponents model."""
         weighted = WeightedComponents(
-            dasha=14.0,
-            transit=20.0,
-            strength=9.0,
-            aspect=7.2,
+            dasha=16.0,
+            transit=24.0,
+            strength=9.9,
             motion=4.0
         )
         total = weighted.total()
-        assert abs(total - 54.2) < 0.01
+        assert abs(total - 53.9) < 0.01
     
     def test_planet_score(self):
         """Test PlanetScore model."""
         breakdown = ComponentBreakdown(
-            dasha=40, transit=80, strength=45, aspect=60, motion=50
+            dasha=40, transit=80, strength=45, motion=50
         )
         weighted = WeightedComponents(
-            dasha=14.0, transit=20.0, strength=9.0, aspect=7.2, motion=4.0
+            dasha=16.0, transit=24.0, strength=9.9, motion=4.0
         )
         score = PlanetScore(
             planet=Planet.SATURN,

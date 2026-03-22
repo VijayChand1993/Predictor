@@ -414,7 +414,6 @@ if st.session_state.data_loaded:
         dasha_vals = []
         transit_vals = []
         strength_vals = []
-        aspect_vals = []
         motion_vals = []
         total_scores = []
 
@@ -426,7 +425,6 @@ if st.session_state.data_loaded:
             dasha_vals.append(wc["dasha"])
             transit_vals.append(wc["transit"])
             strength_vals.append(wc["strength"])
-            aspect_vals.append(wc["aspect"])
             motion_vals.append(wc["motion"])
             total_scores.append(info["score"])
 
@@ -434,7 +432,7 @@ if st.session_state.data_loaded:
         fig_stacked = go.Figure()
 
         fig_stacked.add_trace(go.Bar(
-            name='Dasha (35%)',
+            name='Dasha (40%)',
             y=planets,
             x=dasha_vals,
             orientation='h',
@@ -443,7 +441,7 @@ if st.session_state.data_loaded:
         ))
 
         fig_stacked.add_trace(go.Bar(
-            name='Transit (25%)',
+            name='Transit (30%)',
             y=planets,
             x=transit_vals,
             orientation='h',
@@ -452,21 +450,12 @@ if st.session_state.data_loaded:
         ))
 
         fig_stacked.add_trace(go.Bar(
-            name='Strength (20%)',
+            name='Strength (22%)',
             y=planets,
             x=strength_vals,
             orientation='h',
             marker=dict(color='#10b981'),
             hovertemplate='<b>%{y}</b><br>Strength: %{x:.2f}<extra></extra>'
-        ))
-
-        fig_stacked.add_trace(go.Bar(
-            name='Aspect (12%)',
-            y=planets,
-            x=aspect_vals,
-            orientation='h',
-            marker=dict(color='#f59e0b'),
-            hovertemplate='<b>%{y}</b><br>Aspect: %{x:.2f}<extra></extra>'
         ))
 
         fig_stacked.add_trace(go.Bar(
@@ -518,10 +507,9 @@ if st.session_state.data_loaded:
                         breakdown["dasha"],
                         breakdown["transit"],
                         breakdown["strength"],
-                        breakdown["aspect"],
                         breakdown["motion"]
                     ],
-                    theta=['Dasha', 'Transit', 'Strength', 'Aspect', 'Motion'],
+                    theta=['Dasha', 'Transit', 'Strength', 'Motion'],
                     fill='toself',
                     name=f"{planet} ({info['score']:.2f})"
                 ))
@@ -545,10 +533,9 @@ if st.session_state.data_loaded:
             st.subheader("⚖️ Scoring Component Weights")
 
             weights = {
-                'Dasha': 35,
-                'Transit': 25,
-                'Strength': 20,
-                'Aspect': 12,
+                'Dasha': 40,
+                'Transit': 30,
+                'Strength': 22,
                 'Motion': 8
             }
 
@@ -580,7 +567,6 @@ if st.session_state.data_loaded:
                 'Dasha': breakdown["dasha"],
                 'Transit': breakdown["transit"],
                 'Strength': breakdown["strength"],
-                'Aspect': breakdown["aspect"],
                 'Motion': breakdown["motion"]
             })
 
@@ -613,12 +599,10 @@ if st.session_state.data_loaded:
                 'Dasha (W)': wc["dasha"],
                 'Transit (W)': wc["transit"],
                 'Strength (W)': wc["strength"],
-                'Aspect (W)': wc["aspect"],
                 'Motion (W)': wc["motion"],
                 'Dasha (R)': bd["dasha"],
                 'Transit (R)': bd["transit"],
                 'Strength (R)': bd["strength"],
-                'Aspect (R)': bd["aspect"],
                 'Motion (R)': bd["motion"]
             })
 
@@ -631,12 +615,10 @@ if st.session_state.data_loaded:
         df_table_formatted['Dasha (W)'] = df_table_formatted['Dasha (W)'].apply(lambda x: f"{x:.2f}")
         df_table_formatted['Transit (W)'] = df_table_formatted['Transit (W)'].apply(lambda x: f"{x:.2f}")
         df_table_formatted['Strength (W)'] = df_table_formatted['Strength (W)'].apply(lambda x: f"{x:.2f}")
-        df_table_formatted['Aspect (W)'] = df_table_formatted['Aspect (W)'].apply(lambda x: f"{x:.2f}")
         df_table_formatted['Motion (W)'] = df_table_formatted['Motion (W)'].apply(lambda x: f"{x:.2f}")
         df_table_formatted['Dasha (R)'] = df_table_formatted['Dasha (R)'].apply(lambda x: f"{x:.0f}")
         df_table_formatted['Transit (R)'] = df_table_formatted['Transit (R)'].apply(lambda x: f"{x:.0f}")
         df_table_formatted['Strength (R)'] = df_table_formatted['Strength (R)'].apply(lambda x: f"{x:.0f}")
-        df_table_formatted['Aspect (R)'] = df_table_formatted['Aspect (R)'].apply(lambda x: f"{x:.2f}")
         df_table_formatted['Motion (R)'] = df_table_formatted['Motion (R)'].apply(lambda x: f"{x:.0f}")
 
         st.dataframe(
@@ -1364,7 +1346,7 @@ else:
     - Detailed score heatmap and data table
 
     #### 🏠 House Activation Tab
-    - House activation scores with planet and aspect contributions
+    - House activation scores with planet contributions
     - Top houses distribution
     - Strongest house gauge
     - Detailed house activation table
