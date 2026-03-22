@@ -4,7 +4,7 @@ Pipeline models for unified analysis responses.
 This module defines comprehensive response models that combine
 all analysis components into a single unified response.
 """
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
 from api.models.natal_chart import NatalChart
@@ -17,25 +17,27 @@ class AnalysisRequest(BaseModel):
     """Request for complete astrological analysis."""
     
     # Birth details (for chart generation or lookup)
-    chart_id: Optional[str] = Field(None, description="Existing chart ID (if available)")
-    name: Optional[str] = Field(None, description="Person's name")
-    birth_date: Optional[str] = Field(None, description="Birth date (YYYY-MM-DD)")
-    birth_time: Optional[str] = Field(None, description="Birth time (HH:MM)")
-    latitude: Optional[float] = Field(None, description="Birth latitude")
-    longitude: Optional[float] = Field(None, description="Birth longitude")
-    timezone: Optional[str] = Field(None, description="Birth timezone")
+    chart_id: Optional[str] = Field(None, description="Existing chart ID (if available)", example="04ecf146-d0e1-4e72-8c30-fb8bba03e2e5")
+    name: Optional[str] = Field(None, description="Person's name", example="Vijay")
+    birth_date: Optional[str] = Field(None, description="Birth date (YYYY-MM-DD)", example="1993-04-02")
+    birth_time: Optional[str] = Field(None, description="Birth time (HH:MM)", example="01:15")
+    latitude: Optional[float] = Field(None, description="Birth latitude", example=29.58633)
+    longitude: Optional[float] = Field(None, description="Birth longitude", example=80.23275)
+    timezone: Optional[str] = Field(None, description="Birth timezone", example="Asia/Kolkata")
     
     # Analysis parameters
     calculation_date: datetime = Field(
         default_factory=datetime.now,
-        description="Date for current analysis"
+        description="Date for current analysis",
+        example=datetime.now()
     )
     
     # Timeline parameters
     include_timeline: bool = Field(True, description="Include timeline analysis")
-    timeline_start: Optional[datetime] = Field(None, description="Timeline start date")
-    timeline_end: Optional[datetime] = Field(None, description="Timeline end date")
-    timeline_days: int = Field(90, description="Timeline duration in days (if start/end not specified)")
+    timeline_start: Optional[datetime] = Field(None, description="Timeline start date", example=datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
+    timeline_end: Optional[datetime] = Field(None, description="Timeline end date", example=datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=30))
+    timeline_days: int = Field(1, description="Timeline duration in days (if start/end not specified)", example=1
+    )
     
     # Analysis options
     include_subdomains: bool = Field(True, description="Include subdomain analysis")
@@ -110,7 +112,7 @@ class AnalysisResponse(BaseModel):
 class QuickAnalysisRequest(BaseModel):
     """Simplified request for quick analysis of existing chart."""
     
-    chart_id: str = Field(..., description="Existing chart ID")
+    chart_id: str = Field(..., description="Existing chart ID", example="04ecf146-d0e1-4e72-8c30-fb8bba03e2e5")
     calculation_date: Optional[datetime] = Field(
         None,
         description="Date for analysis (defaults to now)"

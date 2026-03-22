@@ -1,15 +1,21 @@
 """
 Core Scoring Engine for calculating planet scores.
 
-MULTIPLICATIVE MODEL WITH ENHANCEMENTS (Phase 5):
-Dasha acts as a gating function - planets only matter when their dasha is active.
+MULTIPLICATIVE MODEL WITH STRUCTURAL FIX (Phase 6):
+Complete rewrite to fix semi-additive scoring, add competition layer, and proper signal isolation.
 
-Formula (5-step process):
-1. Base: P_raw = (dasha^1.2) × (0.5×transit + 0.3×strength + 0.15×aspect + 0.05×motion)
-2. Activation Gate: if dasha < 10, multiply by 0.2 (suppress weak signals)
-3. Contrast Boost: P_raw = P_raw ** 1.7 (amplify differences)
-4. Planet Factor: P_raw *= PLANET_FACTOR[planet] (intrinsic importance)
-5. Normalize: P = 100 × P_raw / Σ P_raw (sum to 100)
+Formula (6-step process for each planet):
+1. Base: base = 0.5×transit + 0.3×strength + 0.15×aspect + 0.05×motion
+2. Dasha Gate: score = (dasha^1.3) × base
+3. Strength Amplification: score *= (0.7 + 0.3×strength)
+4. Planet Factor: score *= PLANET_FACTOR[planet]
+5. Event Boost: score += eventBoost (from transit service)
+6. Hard Gate & Noise Floor: if dasha < 0.1 AND transit < 0.2, score = 0; if score < 0.05, score = 0
+
+Competition Layer (cross-planet normalization):
+1. Divide by max: score = score / max(all_scores)
+2. Contrast boost: score = score^2
+3. Normalize to 100: score = (score / sum(all_scores)) * 100
 
 This means:
 - If dasha = 0 (planet not in dasha), score ≈ 0 (planet inactive)
@@ -107,11 +113,12 @@ class ScoringEngine:
     WEIGHT_ASPECT = 0.15     # Aspect contribution within gated sum (DECREASED from 0.20)
     WEIGHT_MOTION = 0.05     # Motion contribution within gated sum (DECREASED from 0.10)
 
-    # Enhancement parameters
-    DASHA_EXPONENT = 1.2     # Dasha exponent (amplifies strong dasha periods)
-    ACTIVATION_THRESHOLD = 10.0  # Dasha threshold for activation gate (was 15.0)
-    ACTIVATION_PENALTY = 0.2     # Penalty multiplier for weak dasha
-    CONTRAST_EXPONENT = 1.7      # Contrast boost exponent (was 1.5)
+    # Enhancement parameters (Phase 6 - Structural Fix)
+    DASHA_EXPONENT = 1.3     # Dasha exponent (increased from 1.2 for stronger gating)
+    HARD_GATE_DASHA = 0.1    # Hard gate: if dasha < 0.1 AND transit < 0.2, score = 0
+    HARD_GATE_TRANSIT = 0.2  # Hard gate transit threshold
+    NOISE_FLOOR = 0.05       # If final score < 0.05, set to 0
+    CONTRAST_EXPONENT = 2.0  # Competition layer contrast (P^2)
 
     # Planet Factor (Phase 5): Intrinsic importance of each planet
     # Based on traditional Vedic astrology hierarchy
@@ -374,77 +381,119 @@ class ScoringEngine:
             motion=(breakdown.motion / 100.0) * self.WEIGHT_MOTION * dasha_gate * 100.0
         )
 
-    def calculate_raw_score(self, breakdown: ComponentBreakdown, planet: Planet = None) -> float:
+    def calculate_raw_score(self, breakdown: ComponentBreakdown, planet: Planet = None, event_boost: float = 0.0) -> float:
         """
-        Calculate raw planet score using MULTIPLICATIVE formula with enhancements.
+        Calculate raw planet score using MULTIPLICATIVE formula (Phase 6 - Structural Fix).
 
-        Formula (5 steps - Phase 5):
-        1. Base: P_raw = (dasha^1.2) × (0.5×transit + 0.3×strength + 0.15×aspect + 0.05×motion)
-        2. Activation Gate: if dasha < 10, multiply by 0.2 (suppress weak dasha signals)
-        3. Contrast Boost: P_raw = P_raw ** 1.7 (amplify differences)
-        4. Planet Factor: P_raw *= PLANET_FACTOR[planet] (intrinsic importance)
-        5. Normalize: P = P_raw / sum(P_raw) (done in calculate_planet_scores)
+        Formula (NEW - 6 steps):
+        1. Base: base = 0.5×transit + 0.3×strength + 0.15×aspect + 0.05×motion
+        2. Dasha Gate: score = (dasha^1.3) × base
+        3. Strength Amplification: score *= (0.7 + 0.3×strength)
+        4. Planet Factor: score *= PLANET_FACTOR[planet]
+        5. Event Boost: score += eventBoost (from transit service)
+        6. Hard Gate & Noise Floor: if dasha < 0.1 AND transit < 0.2, score = 0; if score < 0.05, score = 0
 
         Args:
             breakdown: Component breakdown with normalized scores (0-100)
             planet: The planet (for planet factor application)
+            event_boost: Event boost from transit service (sign changes, conjunctions, etc.)
 
         Returns:
-            Raw score (before cross-planet normalization)
+            Raw score (before competition layer normalization)
         """
-        # Step 1: Calculate the gated sum with new weights
-        gated_sum = (
-            (breakdown.transit / 100.0) * self.WEIGHT_TRANSIT +
-            (breakdown.strength / 100.0) * self.WEIGHT_STRENGTH +
-            (breakdown.aspect / 100.0) * self.WEIGHT_ASPECT +
-            (breakdown.motion / 100.0) * self.WEIGHT_MOTION
+        # Normalize components to 0-1 range
+        dasha_norm = breakdown.dasha / 100.0
+        transit_norm = breakdown.transit / 100.0
+        strength_norm = breakdown.strength / 100.0
+        aspect_norm = breakdown.aspect / 100.0
+        motion_norm = breakdown.motion / 100.0
+
+        # HARD GATE: If dasha < 0.1 AND transit < 0.2, planet is completely inactive
+        if dasha_norm < self.HARD_GATE_DASHA and transit_norm < self.HARD_GATE_TRANSIT:
+            return 0.0
+
+        # Step 1: Calculate base weighted sum
+        base = (
+            self.WEIGHT_TRANSIT * transit_norm +
+            self.WEIGHT_STRENGTH * strength_norm +
+            self.WEIGHT_ASPECT * aspect_norm +
+            self.WEIGHT_MOTION * motion_norm
         )
 
-        # Apply dasha gate with exponent (dasha^1.2)
-        dasha_normalized = breakdown.dasha / 100.0
-        dasha_gate = dasha_normalized ** self.DASHA_EXPONENT
-        raw_score = gated_sum * dasha_gate * 100.0
+        # Step 2: Apply dasha gate with exponent (dasha^1.3)
+        dasha_gate = dasha_norm ** self.DASHA_EXPONENT
+        score = dasha_gate * base
 
-        # Step 2: Activation Gate - suppress very weak dasha signals
-        if breakdown.dasha < self.ACTIVATION_THRESHOLD:
-            raw_score *= self.ACTIVATION_PENALTY
-
-        # Step 3: Contrast Boost - amplify differences between planets
-        raw_score = raw_score ** self.CONTRAST_EXPONENT
+        # Step 3: Strength amplification (NOT addition - multiplicative)
+        # Score is amplified by strength: 70% base + 30% strength-dependent
+        strength_amplifier = 0.7 + 0.3 * strength_norm
+        score *= strength_amplifier
 
         # Step 4: Planet Factor - apply intrinsic importance
         if planet is not None:
             planet_factor = self.PLANET_FACTOR.get(planet, 1.0)
-            raw_score *= planet_factor
+            score *= planet_factor
 
-        return raw_score
+        # Step 5: Event Boost - add (not multiply) event-based bonus
+        score += event_boost
+
+        # Step 6: Noise Floor - eliminate very weak signals
+        if score < self.NOISE_FLOOR:
+            score = 0.0
+
+        # Scale to 0-100 range for consistency
+        return score * 100.0
     
     def normalize_scores(
         self,
         raw_scores: Dict[Planet, float]
     ) -> Dict[Planet, float]:
         """
-        Normalize planet scores so they sum to 100.
-        
-        Formula: P(p) = 100 × P_raw(p) / Σ P_raw(all planets)
-        
+        Normalize planet scores with COMPETITION LAYER (Phase 6 - Structural Fix).
+
+        Formula (3 steps):
+        1. Divide by max: score = score / max(all_scores)
+        2. Contrast boost: score = score^2 (amplifies differences)
+        3. Normalize to 100: score = (score / sum(all_scores)) * 100
+
+        This creates competition between planets - strong planets get much stronger,
+        weak planets get much weaker.
+
         Args:
             raw_scores: Raw scores for all planets
-        
+
         Returns:
             Normalized scores (sum to 100)
         """
-        total_raw = sum(raw_scores.values())
-        
         # Handle edge case of zero total
-        if total_raw == 0:
+        if not raw_scores or all(s == 0 for s in raw_scores.values()):
             # Equal distribution if all scores are zero
             return {planet: 100.0 / len(raw_scores) for planet in raw_scores}
-        
-        # Normalize
+
+        # Step 1: Divide by max value (normalize to 0-1 range based on strongest planet)
+        max_score = max(raw_scores.values())
+        if max_score == 0:
+            return {planet: 100.0 / len(raw_scores) for planet in raw_scores}
+
+        normalized_to_max = {
+            planet: score / max_score
+            for planet, score in raw_scores.items()
+        }
+
+        # Step 2: Apply contrast boost (P^2) - makes strong planets stronger
+        contrasted = {
+            planet: score ** self.CONTRAST_EXPONENT
+            for planet, score in normalized_to_max.items()
+        }
+
+        # Step 3: Normalize to sum to 100
+        total_contrasted = sum(contrasted.values())
+        if total_contrasted == 0:
+            return {planet: 100.0 / len(raw_scores) for planet in raw_scores}
+
         return {
-            planet: (raw_score / total_raw) * 100.0
-            for planet, raw_score in raw_scores.items()
+            planet: (score / total_contrasted) * 100.0
+            for planet, score in contrasted.items()
         }
 
     def generate_planet_explanations(

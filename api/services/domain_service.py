@@ -62,11 +62,15 @@ class DomainService:
         planet_scores: Dict[Planet, float]
     ) -> DomainScore:
         """
-        Calculate score for a single life domain.
+        Calculate score for a single life domain (Phase 6 - STRUCTURAL FIX).
 
-        Combines:
-        - House activation (60% weight)
-        - Planet influence (40% weight)
+        NEW APPROACH - ABSOLUTE SCORING (not normalized across domains):
+        1. Calculate absolute domain score from planets and houses
+        2. Apply house amplification if house score > 60
+        3. Apply sigmoid scaling to map to 0-100 range
+        4. Clamp to 100 max
+
+        This fixes the "domain scores < 20" problem by removing global normalization.
 
         Args:
             domain: Domain name (e.g., "Career / Work")
@@ -79,9 +83,14 @@ class DomainService:
         # Get domain configuration
         domain_houses = get_domain_houses(domain)
 
-        # Calculate house component (60% weight)
-        house_component = 0.0
+        # Step 1: Calculate ABSOLUTE domain score (sum, not average)
+        # Each planet contributes: planetScore × domainWeight × houseActivation
+
+        domain_score_raw = 0.0
         house_scores = {}
+
+        # House contribution (direct sum, not normalized)
+        house_component = 0.0
         for house_num in domain_houses:
             if house_num in house_activations:
                 house_weight = get_domain_house_weight(domain, house_num)
@@ -89,25 +98,34 @@ class DomainService:
                 house_component += house_score * house_weight
                 house_scores[house_num] = house_score
 
-        # Calculate planet component (40% weight)
+        # Planet contribution (direct sum, not normalized)
         planet_component = 0.0
-        total_influence = 0.0
-
         for planet, score in planet_scores.items():
             influence = get_planet_domain_influence(planet, domain)
             if influence > 0:
+                # Absolute contribution (no normalization)
                 planet_component += score * influence
-                total_influence += influence
 
-        # Normalize planet component by total influence
-        if total_influence > 0:
-            planet_component = planet_component / total_influence
-
-        # Combine components with weights
+        # Combine components (absolute sum, not weighted average)
+        # Scale down to reasonable range (0-2 typically)
         house_weight = DOMAIN_CALCULATION_WEIGHTS["house_weight"]
         planet_weight = DOMAIN_CALCULATION_WEIGHTS["planet_weight"]
 
-        final_score = (house_component * house_weight) + (planet_component * planet_weight)
+        domain_score_raw = (house_component * house_weight + planet_component * planet_weight) / 100.0
+
+        # Step 2: House amplification - if primary houses are strong, boost domain
+        avg_house_score = sum(house_scores.values()) / len(house_scores) if house_scores else 0
+        if avg_house_score > 60:
+            domain_score_raw *= 1.2
+
+        # Step 3: Sigmoid scaling - map absolute score to 0-100 range
+        # Formula: 100 × (1 - e^(-2 × score))
+        # This maps: 0 → 0, 0.5 → 63, 1.0 → 86, 1.5 → 95, 2.0 → 98
+        import math
+        final_score = 100.0 * (1.0 - math.exp(-2.0 * domain_score_raw))
+
+        # Step 4: Clamp to 100 max
+        final_score = min(final_score, 100.0)
 
         # Identify driving planets
         driving_planets = self.identify_driving_planets(domain, planet_scores)
@@ -137,7 +155,9 @@ class DomainService:
         planet_scores: Dict[Planet, float]
     ) -> SubdomainScore:
         """
-        Calculate score for a specific subdomain.
+        Calculate score for a specific subdomain (Phase 6 - STRUCTURAL FIX).
+
+        Uses same absolute scoring approach as domains.
 
         Args:
             subdomain: Subdomain name (e.g., "job", "promotion")
@@ -153,39 +173,30 @@ class DomainService:
 
         subdomain_config = SUBDOMAIN_MAPPING[subdomain]
 
-        # Calculate house component
+        # Calculate house component (absolute sum)
         house_component = 0.0
-        total_house_weight = 0.0
-
         for house_num, weight in subdomain_config["houses"].items():
             if house_num in house_activations:
                 house_score = house_activations[house_num].score
                 house_component += house_score * weight
-                total_house_weight += weight
 
-        # Normalize house component
-        if total_house_weight > 0:
-            house_component = house_component / total_house_weight
-
-        # Calculate planet component
+        # Calculate planet component (absolute sum)
         planet_component = 0.0
-        total_planet_influence = 0.0
-
         for planet_str, influence in subdomain_config["planets"].items():
             planet = Planet(planet_str)
             if planet in planet_scores:
                 planet_component += planet_scores[planet] * influence
-                total_planet_influence += influence
 
-        # Normalize planet component
-        if total_planet_influence > 0:
-            planet_component = planet_component / total_planet_influence
-
-        # Combine components (60% house, 40% planet)
+        # Combine components (absolute sum, scaled down)
         house_weight = DOMAIN_CALCULATION_WEIGHTS["house_weight"]
         planet_weight = DOMAIN_CALCULATION_WEIGHTS["planet_weight"]
 
-        final_score = (house_component * house_weight) + (planet_component * planet_weight)
+        subdomain_score_raw = (house_component * house_weight + planet_component * planet_weight) / 100.0
+
+        # Apply sigmoid scaling
+        import math
+        final_score = 100.0 * (1.0 - math.exp(-2.0 * subdomain_score_raw))
+        final_score = min(final_score, 100.0)
 
         return SubdomainScore(
             subdomain=subdomain,
