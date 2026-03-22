@@ -157,17 +157,17 @@ class TestScoringEngine:
     def test_service_initialization(self, scoring_engine):
         """Test that the service initializes correctly."""
         assert scoring_engine is not None
-        # Updated weights after removing aspect component
-        assert scoring_engine.WEIGHT_DASHA == 0.40
-        assert scoring_engine.WEIGHT_TRANSIT == 0.30
-        assert scoring_engine.WEIGHT_STRENGTH == 0.22
-        assert scoring_engine.WEIGHT_MOTION == 0.08
+        # Multiplicative model: weights for gated components
+        assert scoring_engine.WEIGHT_TRANSIT == 0.40
+        assert scoring_engine.WEIGHT_STRENGTH == 0.30
+        assert scoring_engine.WEIGHT_ASPECT == 0.20
+        assert scoring_engine.WEIGHT_MOTION == 0.10
 
-        # Verify weights sum to 1.0
+        # Verify gated weights sum to 1.0
         total_weight = (
-            scoring_engine.WEIGHT_DASHA +
             scoring_engine.WEIGHT_TRANSIT +
             scoring_engine.WEIGHT_STRENGTH +
+            scoring_engine.WEIGHT_ASPECT +
             scoring_engine.WEIGHT_MOTION
         )
         assert abs(total_weight - 1.0) < 0.001  # Allow small floating point error
@@ -189,42 +189,83 @@ class TestScoringEngine:
         assert 0 <= breakdown.motion <= 100
 
     def test_weighted_components(self, scoring_engine):
-        """Test applying weights to component breakdown."""
+        """Test applying MULTIPLICATIVE weights to component breakdown."""
         from api.models import ComponentBreakdown
 
         breakdown = ComponentBreakdown(
-            dasha=40.0,
+            dasha=40.0,  # 40% dasha gate
             transit=80.0,
             strength=45.0,
+            aspect=35.0,
             motion=50.0
         )
 
         weighted = scoring_engine.calculate_weighted_components(breakdown)
 
-        # Verify weighted values (updated weights after removing aspect)
-        assert weighted.dasha == 40.0 * 0.40  # 16.0
-        assert weighted.transit == 80.0 * 0.30  # 24.0
-        assert weighted.strength == 45.0 * 0.22  # 9.9
-        assert weighted.motion == 50.0 * 0.08  # 4.0
+        # Multiplicative formula: dasha gates the other components
+        # dasha_gate = 40/100 = 0.4
+        # weighted_transit = (80/100) * 0.40 * 0.4 * 100 = 12.8
+        # weighted_strength = (45/100) * 0.30 * 0.4 * 100 = 5.4
+        # weighted_aspect = (35/100) * 0.20 * 0.4 * 100 = 2.8
+        # weighted_motion = (50/100) * 0.10 * 0.4 * 100 = 2.0
 
-        # Verify total
+        assert weighted.dasha == 40.0  # Dasha is the gate, not weighted
+        assert abs(weighted.transit - 12.8) < 0.001
+        assert abs(weighted.strength - 5.4) < 0.001
+        assert abs(weighted.aspect - 2.8) < 0.001
+        assert abs(weighted.motion - 2.0) < 0.001
+
+        # Verify total (excluding dasha gate)
         total = weighted.total()
-        expected_total = 16.0 + 24.0 + 9.9 + 4.0  # 53.9
+        expected_total = 12.8 + 5.4 + 2.8 + 2.0  # 23.0
         assert abs(total - expected_total) < 0.001
 
     def test_raw_score_calculation(self, scoring_engine):
-        """Test calculating raw score from weighted components."""
-        from api.models import WeightedComponents
+        """Test calculating raw score using MULTIPLICATIVE formula with enhancements."""
+        from api.models import ComponentBreakdown
 
-        weighted = WeightedComponents(
-            dasha=16.0,
-            transit=24.0,
-            strength=9.9,
-            motion=4.0
+        breakdown = ComponentBreakdown(
+            dasha=40.0,  # 40% dasha gate (>15, so no activation gate penalty)
+            transit=80.0,
+            strength=45.0,
+            aspect=35.0,
+            motion=50.0
         )
 
-        raw_score = scoring_engine.calculate_raw_score(weighted)
-        assert abs(raw_score - 53.9) < 0.001
+        raw_score = scoring_engine.calculate_raw_score(breakdown)
+
+        # Formula (3 steps):
+        # 1. Base: P_raw = dasha × (0.4×transit + 0.3×strength + 0.2×aspect + 0.1×motion)
+        #    gated_sum = (80/100)*0.4 + (45/100)*0.3 + (35/100)*0.2 + (50/100)*0.1
+        #              = 0.32 + 0.135 + 0.07 + 0.05 = 0.575
+        #    base_score = 0.575 * (40/100) * 100 = 23.0
+        # 2. Activation Gate: dasha=40 >= 15, so no penalty (×1.0)
+        # 3. Contrast Boost: P_raw = 23.0 ** 1.5 = 110.36
+        expected = 23.0 ** 1.5
+        assert abs(raw_score - expected) < 0.1
+
+    def test_raw_score_with_activation_gate(self, scoring_engine):
+        """Test activation gate for very weak dasha."""
+        from api.models import ComponentBreakdown
+
+        breakdown = ComponentBreakdown(
+            dasha=10.0,  # <15, so activation gate applies (×0.2)
+            transit=80.0,
+            strength=45.0,
+            aspect=35.0,
+            motion=50.0
+        )
+
+        raw_score = scoring_engine.calculate_raw_score(breakdown)
+
+        # Formula (3 steps):
+        # 1. Base: gated_sum = 0.575 (same as above)
+        #    base_score = 0.575 * (10/100) * 100 = 5.75
+        # 2. Activation Gate: dasha=10 < 15, so multiply by 0.2
+        #    gated_score = 5.75 * 0.2 = 1.15
+        # 3. Contrast Boost: P_raw = 1.15 ** 1.5 = 1.234
+        expected = (5.75 * 0.2) ** 1.5
+        assert abs(raw_score - expected) < 0.1
 
     def test_normalize_scores(self, scoring_engine):
         """Test normalizing scores to sum to 100."""
@@ -302,24 +343,26 @@ class TestScoringEngine:
         # Check Jupiter's breakdown
         jupiter_score = planet_scores.scores[Planet.JUPITER]
 
-        # Verify breakdown components (aspect removed)
+        # Verify breakdown components (aspect restored)
         assert hasattr(jupiter_score.breakdown, 'dasha')
         assert hasattr(jupiter_score.breakdown, 'transit')
         assert hasattr(jupiter_score.breakdown, 'strength')
+        assert hasattr(jupiter_score.breakdown, 'aspect')
         assert hasattr(jupiter_score.breakdown, 'motion')
 
-        # Verify weighted components (aspect removed)
+        # Verify weighted components (aspect restored)
         assert hasattr(jupiter_score.weighted_components, 'dasha')
         assert hasattr(jupiter_score.weighted_components, 'transit')
         assert hasattr(jupiter_score.weighted_components, 'strength')
+        assert hasattr(jupiter_score.weighted_components, 'aspect')
         assert hasattr(jupiter_score.weighted_components, 'motion')
 
     def test_component_weights_sum(self, scoring_engine):
-        """Test that component weights sum to 1.0."""
+        """Test that gated component weights sum to 1.0."""
         total = (
-            scoring_engine.WEIGHT_DASHA +
             scoring_engine.WEIGHT_TRANSIT +
             scoring_engine.WEIGHT_STRENGTH +
+            scoring_engine.WEIGHT_ASPECT +
             scoring_engine.WEIGHT_MOTION
         )
         assert abs(total - 1.0) < 0.001
@@ -359,6 +402,17 @@ class TestScoringEngine:
 
         # Test neutral (50 = no dignity, no retrograde, no combustion)
         assert scoring_engine.normalize_strength(50.0) == 0.5
+
+    def test_normalize_aspect(self, scoring_engine):
+        """Test aspect normalization to 0-1 scale."""
+        # Test minimum (0)
+        assert scoring_engine.normalize_aspect(0.0) == 0.0
+
+        # Test maximum (100 = AspectService max range)
+        assert abs(scoring_engine.normalize_aspect(100.0) - 1.0) < 0.001
+
+        # Test typical value (50)
+        assert abs(scoring_engine.normalize_aspect(50.0) - 0.5) < 0.001
 
     def test_normalize_motion(self, scoring_engine):
         """Test motion normalization to 0-1 scale."""

@@ -10,12 +10,13 @@ from .enums import Planet
 class ComponentBreakdown(BaseModel):
     """Breakdown of scoring components for a planet.
 
-    NOTE: Aspect component removed as it used static natal aspects which don't
-    change over time and shouldn't be in a dynamic scoring model.
+    MULTIPLICATIVE MODEL (Phase 3):
+    Aspect component restored for use in multiplicative formula.
     """
-    dasha: float = Field(..., description="Dasha contribution (0-100)")
+    dasha: float = Field(..., description="Dasha contribution (0-100) - GATING FUNCTION")
     transit: float = Field(..., description="Transit contribution (0-100)")
     strength: float = Field(..., description="Planet strength contribution (0-100)")
+    aspect: float = Field(..., description="Aspect contribution (0-100)")
     motion: float = Field(..., description="Motion/speed contribution (0-100)")
 
     class Config:
@@ -24,36 +25,44 @@ class ComponentBreakdown(BaseModel):
                 "dasha": 40,
                 "transit": 80,
                 "strength": 45,
+                "aspect": 35,
                 "motion": 50
             }
         }
 
 
 class WeightedComponents(BaseModel):
-    """Weighted components after applying final weights.
+    """Weighted components after applying MULTIPLICATIVE formula.
 
-    NOTE: Aspect component removed. Weights redistributed:
-    - Dasha: 0.40 (was 0.35, +0.05)
-    - Transit: 0.30 (was 0.25, +0.05)
-    - Strength: 0.22 (was 0.20, +0.02)
-    - Motion: 0.08 (unchanged)
+    MULTIPLICATIVE MODEL (Phase 3):
+    Formula: P_raw = dasha × (0.4×transit + 0.3×strength + 0.2×aspect + 0.1×motion)
+
+    Weights for gated components:
+    - Transit: 0.40 (40% of gated sum)
+    - Strength: 0.30 (30% of gated sum)
+    - Aspect: 0.20 (20% of gated sum)
+    - Motion: 0.10 (10% of gated sum)
+
+    Dasha acts as a gate (0-100), not a weighted component.
     """
-    dasha: float = Field(..., description="Weighted dasha (0.40 × W_dasha)")
-    transit: float = Field(..., description="Weighted transit (0.30 × W_transit)")
-    strength: float = Field(..., description="Weighted strength (0.22 × W_strength)")
-    motion: float = Field(..., description="Weighted motion (0.08 × W_motion)")
+    dasha: float = Field(..., description="Dasha gate value (0-100)")
+    transit: float = Field(..., description="Weighted transit (gated by dasha)")
+    strength: float = Field(..., description="Weighted strength (gated by dasha)")
+    aspect: float = Field(..., description="Weighted aspect (gated by dasha)")
+    motion: float = Field(..., description="Weighted motion (gated by dasha)")
 
     def total(self) -> float:
-        """Calculate total of all weighted components."""
-        return self.dasha + self.transit + self.strength + self.motion
+        """Calculate total of all weighted components (excluding dasha gate)."""
+        return self.transit + self.strength + self.aspect + self.motion
 
     class Config:
         json_schema_extra = {
             "example": {
-                "dasha": 16.0,
-                "transit": 24.0,
-                "strength": 9.9,
-                "motion": 4.0
+                "dasha": 40.0,
+                "transit": 12.8,
+                "strength": 5.4,
+                "aspect": 2.8,
+                "motion": 2.0
             }
         }
 

@@ -1,33 +1,59 @@
 """
 Core Scoring Engine for calculating planet scores.
 
-Orchestrates all services to calculate final planet scores:
-- Dasha (40%) - Increased from 35%
-- Transit (30%) - Increased from 25%
-- Strength (22%) - Increased from 20%
-- Motion (8%) - Unchanged
+MULTIPLICATIVE MODEL WITH ENHANCEMENTS (Phase 3+):
+Dasha acts as a gating function - planets only matter when their dasha is active.
+
+Formula (3-step process):
+1. Base: P_raw = dasha × (0.4×transit + 0.3×strength + 0.2×aspect + 0.1×motion)
+2. Activation Gate: if dasha < 15, multiply by 0.2 (suppress weak signals)
+3. Contrast Boost: P_raw = P_raw ** 1.5 (amplify differences)
+4. Normalize: P = 100 × P_raw / Σ P_raw (sum to 100)
+
+This means:
+- If dasha = 0 (planet not in dasha), score ≈ 0 (planet inactive)
+- If dasha < 15 (very weak dasha), score is heavily suppressed (×0.2)
+- If dasha = 100 (all dasha levels match), score = full weighted sum
+- Contrast boost (^1.5) makes strong planets stronger, weak planets weaker
+
+Component Weights (within the gated sum):
+- Transit: 40% - Where the planet is transiting
+- Strength: 30% - Dignity, retrograde, combustion
+- Aspect: 20% - Houses the planet aspects
+- Motion: 10% - Retrograde/direct motion speed
 
 PHASE 1 CHANGES:
-- Aspect component removed (was 12%) as it used static natal aspects
 - Default values changed from 50.0 to 0.0 (eliminates noise floor)
-- Weights redistributed: +5% to Dasha, +5% to Transit, +2% to Strength
 
 PHASE 2 CHANGES (Normalization):
 - All components normalized to 0-1 scale before weighting
 - Ensures consistent scale across all components
-- Prevents any single component from dominating due to scale differences
+
+PHASE 3 CHANGES (Multiplicative Model):
+- Dasha now gates all other components (multiplicative, not additive)
+- Aspect component restored (20% of gated sum)
+- New weight distribution: Transit 40%, Strength 30%, Aspect 20%, Motion 10%
+
+PHASE 3+ CHANGES (Activation Gate + Contrast Boost):
+- Activation gate: Suppress planets with dasha < 15 (×0.2 penalty)
+- Contrast boost: Apply P^1.5 to amplify differences between planets
+- Better differentiation between dominant and weak planets
 
 Component Normalization Ranges:
-- Dasha: 0-100 → 0-1 (max = 100)
+- Dasha: 0-100 → 0-1 (max = 100) - GATING FUNCTION
 - Transit: 0-100 → 0-1 (max = 100)
 - Strength: 0-100 → 0-1 (max = 100)
-- Motion: 0-65 → 0-1 (max = 65, typical range 50-65)
+- Aspect: 0-100 → 0-1 (max = 100)
+- Motion: 0-65 → 0-1 (max = 65)
 
-Formula:
+Formula Steps:
 1. Normalize each component: C_norm = C_raw / C_max
 2. Scale to 0-100 for display: C_display = C_norm × 100
-3. Apply weights: P_raw(p) = 0.40×C_dasha + 0.30×C_transit + 0.22×C_strength + 0.08×C_motion
-4. Normalize across planets: P(p) = 100 × P_raw(p) / Σ P_raw(all planets)
+3. Calculate gated sum: S = 0.4×transit + 0.3×strength + 0.2×aspect + 0.1×motion
+4. Apply dasha gate: P_raw(p) = (dasha/100) × S × 100
+5. Apply activation gate: if dasha < 15, P_raw *= 0.2
+6. Apply contrast boost: P_raw = P_raw ** 1.5
+7. Normalize across planets: P(p) = 100 × P_raw(p) / Σ P_raw(all planets)
 """
 from datetime import datetime
 from typing import Dict
@@ -44,7 +70,7 @@ from api.models import (
 )
 from api.services.dasha_service import DashaService
 from api.services.transit_service import TransitService
-# AspectService removed - static natal aspects don't belong in dynamic scoring
+from api.services.aspect_service import AspectService  # Restored for multiplicative model
 from api.services.strength_service import StrengthService
 from api.services.motion_service import MotionService
 
@@ -52,25 +78,26 @@ from api.services.motion_service import MotionService
 class ScoringEngine:
     """Core scoring engine for calculating planet scores."""
 
-    # Component weights (must sum to 1.0)
-    # Aspect component removed - redistributed to other components
-    WEIGHT_DASHA = 0.40      # Was 0.35 (+0.05)
-    WEIGHT_TRANSIT = 0.30    # Was 0.25 (+0.05)
-    WEIGHT_STRENGTH = 0.22   # Was 0.20 (+0.02)
-    WEIGHT_MOTION = 0.08     # Unchanged
+    # MULTIPLICATIVE MODEL: Dasha gates the other components
+    # Weights for the gated components (must sum to 1.0)
+    WEIGHT_TRANSIT = 0.40    # Transit contribution within gated sum
+    WEIGHT_STRENGTH = 0.30   # Strength contribution within gated sum
+    WEIGHT_ASPECT = 0.20     # Aspect contribution within gated sum (restored!)
+    WEIGHT_MOTION = 0.10     # Motion contribution within gated sum
 
     # Component normalization ranges (for converting to 0-1 scale)
     # These represent the theoretical maximum values each component can produce
     DASHA_MAX = 100.0        # Max: Mahadasha(40) + Antardasha(30) + Pratyantar(20) + Sookshma(10)
     TRANSIT_MAX = 100.0      # Max: 100 × planet_weight(1.0) × house_weight(1.0)
     STRENGTH_MAX = 100.0     # Max: 50 + total_strength(50) = 100
+    ASPECT_MAX = 100.0       # Max: Aspect service returns 0-100 range
     MOTION_MAX = 65.0        # Max: 50 + motion_modifier(15) = 65
 
     def __init__(self):
         """Initialize the scoring engine with all required services."""
         self.dasha_service = DashaService()
         self.transit_service = TransitService()
-        # aspect_service removed - static natal aspects don't belong in dynamic scoring
+        self.aspect_service = AspectService()  # Restored for multiplicative model
         self.strength_service = StrengthService()
         self.motion_service = MotionService()
 
@@ -118,6 +145,21 @@ class ScoringEngine:
             Normalized value (0-1)
         """
         return strength_weight / self.STRENGTH_MAX
+
+    def normalize_aspect(self, aspect_weight: float) -> float:
+        """
+        Normalize aspect weight to 0-1 scale.
+
+        Range: 0-100 (varies by planet and house placement)
+        Max: 100 (AspectService returns values in 0-100 range)
+
+        Args:
+            aspect_weight: Raw aspect weight (0-100)
+
+        Returns:
+            Normalized value (0-1)
+        """
+        return aspect_weight / self.ASPECT_MAX
 
     def normalize_motion(self, motion_weight: float) -> float:
         """
@@ -218,8 +260,16 @@ class ScoringEngine:
         # Normalize strength to 0-1, then scale to 0-100 for display
         strength_normalized = self.normalize_strength(strength_weight_raw) * 100.0
 
-        # 4. Aspect weight - REMOVED (static natal aspects don't belong in dynamic scoring)
-        # The 12% weight has been redistributed to other components
+        # 4. Aspect weight - RESTORED for multiplicative model
+        # Using natal aspects (static) - could be enhanced with transit aspects later
+        planet_placement = natal_chart.planets[planet]
+        aspect_weight_raw = self.aspect_service.calculate_aspect_weight(
+            planet,
+            planet_placement.house
+        )
+
+        # Normalize aspect to 0-1, then scale to 0-100 for display
+        aspect_normalized = self.normalize_aspect(aspect_weight_raw) * 100.0
 
         # 5. Motion weight
         motion_calculation = self.motion_service.calculate_chart_motions(
@@ -239,6 +289,7 @@ class ScoringEngine:
             dasha=dasha_normalized,
             transit=transit_normalized,
             strength=strength_normalized,
+            aspect=aspect_normalized,
             motion=motion_normalized
         )
     
@@ -247,32 +298,65 @@ class ScoringEngine:
         breakdown: ComponentBreakdown
     ) -> WeightedComponents:
         """
-        Apply component weights to breakdown.
-        
+        Apply MULTIPLICATIVE formula: P_raw = dasha × (weighted sum of other components).
+
+        This implements the gating function where dasha controls whether other
+        components matter. If dasha = 0, score = 0 regardless of other components.
+
         Args:
-            breakdown: Component breakdown with raw scores (0-100)
-        
+            breakdown: Component breakdown with normalized scores (0-100)
+
         Returns:
-            WeightedComponents with weighted scores
+            WeightedComponents with weighted scores (after dasha gating)
         """
+        # Apply dasha gate: multiply by dasha (0-100 scale)
+        dasha_gate = breakdown.dasha / 100.0  # Convert to 0-1
+
+        # For display purposes, show individual weighted contributions
+        # (these are gated by dasha)
         return WeightedComponents(
-            dasha=breakdown.dasha * self.WEIGHT_DASHA,
-            transit=breakdown.transit * self.WEIGHT_TRANSIT,
-            strength=breakdown.strength * self.WEIGHT_STRENGTH,
-            motion=breakdown.motion * self.WEIGHT_MOTION
+            dasha=breakdown.dasha,  # Dasha is the gate, not a weighted component
+            transit=(breakdown.transit / 100.0) * self.WEIGHT_TRANSIT * dasha_gate * 100.0,
+            strength=(breakdown.strength / 100.0) * self.WEIGHT_STRENGTH * dasha_gate * 100.0,
+            aspect=(breakdown.aspect / 100.0) * self.WEIGHT_ASPECT * dasha_gate * 100.0,
+            motion=(breakdown.motion / 100.0) * self.WEIGHT_MOTION * dasha_gate * 100.0
         )
-    
-    def calculate_raw_score(self, weighted: WeightedComponents) -> float:
+
+    def calculate_raw_score(self, breakdown: ComponentBreakdown) -> float:
         """
-        Calculate raw planet score (before normalization).
-        
+        Calculate raw planet score using MULTIPLICATIVE formula with enhancements.
+
+        Formula (3 steps):
+        1. Base: P_raw = dasha × (0.4×transit + 0.3×strength + 0.2×aspect + 0.1×motion)
+        2. Activation Gate: if dasha < 15, multiply by 0.2 (suppress weak dasha signals)
+        3. Contrast Boost: P_raw = P_raw ** 1.5 (amplify differences)
+
         Args:
-            weighted: Weighted components
-        
+            breakdown: Component breakdown with normalized scores (0-100)
+
         Returns:
-            Raw score (sum of weighted components)
+            Raw score (before cross-planet normalization)
         """
-        return weighted.total()
+        # Calculate the gated sum
+        gated_sum = (
+            (breakdown.transit / 100.0) * self.WEIGHT_TRANSIT +
+            (breakdown.strength / 100.0) * self.WEIGHT_STRENGTH +
+            (breakdown.aspect / 100.0) * self.WEIGHT_ASPECT +
+            (breakdown.motion / 100.0) * self.WEIGHT_MOTION
+        )
+
+        # Apply dasha gate
+        dasha_gate = breakdown.dasha / 100.0
+        raw_score = gated_sum * dasha_gate * 100.0
+
+        # Step 1: Activation Gate - suppress very weak dasha signals
+        if breakdown.dasha < 15.0:
+            raw_score *= 0.2
+
+        # Step 2: Contrast Boost - amplify differences between planets
+        raw_score = raw_score ** 1.5
+
+        return raw_score
     
     def normalize_scores(
         self,
@@ -338,29 +422,31 @@ class ScoringEngine:
 
         explanations.append(f"{planet_name} has {strength} influence with score {score:.1f}/100")
 
-        # 2. Identify dominant component
-        components = {
-            "Dasha": (breakdown.dasha, weighted.dasha, self.WEIGHT_DASHA),
+        # 2. Dasha gate explanation (most important in multiplicative model)
+        if breakdown.dasha >= 70:
+            explanations.append(f"Dasha gate is VERY STRONG ({breakdown.dasha:.1f}/100) - planet is highly active")
+        elif breakdown.dasha >= 40:
+            explanations.append(f"Dasha gate is ACTIVE ({breakdown.dasha:.1f}/100) - planet has moderate influence")
+        elif breakdown.dasha > 0:
+            explanations.append(f"Dasha gate is WEAK ({breakdown.dasha:.1f}/100) - planet has limited influence")
+        else:
+            explanations.append(f"Dasha gate is INACTIVE (0/100) - planet is dormant")
+
+        # 3. Identify dominant gated component (excluding dasha)
+        gated_components = {
             "Transit": (breakdown.transit, weighted.transit, self.WEIGHT_TRANSIT),
             "Strength": (breakdown.strength, weighted.strength, self.WEIGHT_STRENGTH),
+            "Aspect": (breakdown.aspect, weighted.aspect, self.WEIGHT_ASPECT),
             "Motion": (breakdown.motion, weighted.motion, self.WEIGHT_MOTION)
         }
 
         # Find highest weighted component
-        max_component = max(components.items(), key=lambda x: x[1][1])
+        max_component = max(gated_components.items(), key=lambda x: x[1][1])
         comp_name, (raw, weighted_val, weight) = max_component
 
         explanations.append(
-            f"{comp_name} is the strongest factor (raw: {raw:.1f}, weighted: {weighted_val:.1f}, {weight*100:.0f}% weight)"
+            f"{comp_name} is the strongest gated factor (raw: {raw:.1f}, weighted: {weighted_val:.1f}, {weight*100:.0f}% of gated sum)"
         )
-
-        # 3. Dasha-specific explanation
-        if breakdown.dasha >= 70:
-            explanations.append(f"{planet_name} is in a major dasha period (Mahadasha or Antardasha)")
-        elif breakdown.dasha >= 40:
-            explanations.append(f"{planet_name} has moderate dasha influence")
-        else:
-            explanations.append(f"{planet_name} is not in an active dasha period")
 
         # 4. Transit-specific explanation
         if breakdown.transit >= 70:
@@ -424,12 +510,12 @@ class ScoringEngine:
             )
             breakdowns[planet] = breakdown
 
-            # Apply weights
+            # Apply weights (multiplicative formula)
             weighted = self.calculate_weighted_components(breakdown)
             weighted_components_map[planet] = weighted
 
-            # Calculate raw score
-            raw_score = self.calculate_raw_score(weighted)
+            # Calculate raw score (using breakdown, not weighted)
+            raw_score = self.calculate_raw_score(breakdown)
             raw_scores[planet] = raw_score
 
         # Step 3: Normalize scores
