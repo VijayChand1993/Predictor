@@ -155,19 +155,18 @@ class TestScoringEngine:
         )
     
     def test_service_initialization(self, scoring_engine):
-        """Test that the service initializes correctly (Phase 7 - Soft Dasha)."""
+        """Test that the service initializes correctly (Phase 7b - Decompression)."""
         assert scoring_engine is not None
-        # Phase 7: Rebalanced weights for gated components
+        # Phase 7b: Rebalanced weights for gated components
         assert scoring_engine.WEIGHT_TRANSIT == 0.50
         assert scoring_engine.WEIGHT_STRENGTH == 0.30
         assert scoring_engine.WEIGHT_ASPECT == 0.15
         assert scoring_engine.WEIGHT_MOTION == 0.05
 
-        # Verify enhancement parameters (Phase 7 - Soft Dasha)
+        # Verify enhancement parameters (Phase 7b - Decompression)
         assert scoring_engine.DASHA_BASELINE == 0.3  # 30% baseline for non-dasha planets
         assert scoring_engine.DASHA_MULTIPLIER == 0.7  # 70% additional for dasha planets
-        assert scoring_engine.TRANSIT_FLOOR_THRESHOLD == 5.0  # Transit floor kicks in below 5
-        assert scoring_engine.TRANSIT_FLOOR_WEIGHT == 0.2  # Transit contributes 20% to floor
+        assert scoring_engine.SCALE_UP_FACTOR == 1.5  # Scale up to expand range
         assert scoring_engine.CONTRAST_EXPONENT == 2.0  # Competition layer (P^2)
 
         # Phase 5: Verify planet factors
@@ -241,7 +240,7 @@ class TestScoringEngine:
         assert abs(total - expected_total) < 0.001
 
     def test_raw_score_calculation(self, scoring_engine):
-        """Test calculating raw score using SOFT DASHA GATE (Phase 7 - Zero Collapse Fix)."""
+        """Test calculating raw score using PURE MULTIPLICATIVE (Phase 7b - Decompression)."""
         from api.models import ComponentBreakdown
 
         breakdown = ComponentBreakdown(
@@ -255,35 +254,36 @@ class TestScoringEngine:
         # Test with Mars (planet_factor = 1.0, baseline)
         raw_score = scoring_engine.calculate_raw_score(breakdown, Planet.MARS, event_boost=0.0)
 
-        # Formula (Phase 7 - 6 steps):
+        # Formula (Phase 7b - 6 steps):
         # 1. Base: base = 0.5×0.8 + 0.3×0.45 + 0.15×0.35 + 0.05×0.5 = 0.6125
-        # 2. SOFT Dasha Gate: dashaFactor = 0.3 + 0.7×0.4 = 0.3 + 0.28 = 0.58
+        # 2. SOFT Dasha Gate: dashaFactor = 0.3 + 0.7×0.4 = 0.58
         # 3. Apply: score = 0.6125 × 0.58 = 0.3553
-        # 4. Strength Amplification: score *= (0.7 + 0.3×0.45) = 0.3553 × 0.835 = 0.2967
-        # 5. Planet Factor: score *= 1.0 (Mars) = 0.2967
-        # 6. Transit Floor: 0.2967×100 = 29.67 > 5, so no floor applied
-        # Final: 29.67
+        # 4. Strength AMPLIFICATION: score *= (1 + 0.5×0.45) = 0.3553 × 1.225 = 0.4352
+        # 5. Planet Factor: score *= 1.0 (Mars) = 0.4352
+        # 6. Scale Up: score *= 1.5 = 0.6528
+        # Final: 0.6528 × 100 = 65.28
         base = 0.6125
         dasha_factor = 0.3 + 0.7 * 0.4
         after_dasha = base * dasha_factor
-        strength_amp = 0.7 + 0.3 * 0.45
+        strength_amp = 1.0 + 0.5 * 0.45
         after_strength = after_dasha * strength_amp
         after_planet_factor = after_strength * 1.0  # Mars
-        expected = after_planet_factor * 100.0
+        after_scale = after_planet_factor * 1.5
+        expected = after_scale * 100.0
         assert abs(raw_score - expected) < 1.0
 
         # Test with Saturn (planet_factor = 1.25, highest)
         raw_score_saturn = scoring_engine.calculate_raw_score(breakdown, Planet.SATURN, event_boost=0.0)
-        expected_saturn = after_strength * 1.25 * 100.0
+        expected_saturn = after_strength * 1.25 * 1.5 * 100.0
         assert abs(raw_score_saturn - expected_saturn) < 1.0
 
         # Test with Moon (planet_factor = 0.75, lowest)
         raw_score_moon = scoring_engine.calculate_raw_score(breakdown, Planet.MOON, event_boost=0.0)
-        expected_moon = after_strength * 0.75 * 100.0
+        expected_moon = after_strength * 0.75 * 1.5 * 100.0
         assert abs(raw_score_moon - expected_moon) < 1.0
 
     def test_raw_score_with_zero_dasha(self, scoring_engine):
-        """Test soft dasha gate with zero dasha (Phase 7 - prevents zero collapse)."""
+        """Test soft dasha gate with zero dasha (Phase 7b - prevents zero collapse)."""
         from api.models import ComponentBreakdown
 
         breakdown = ComponentBreakdown(
@@ -302,21 +302,22 @@ class TestScoringEngine:
         # Expected: > 0 (soft gate prevents zero collapse)
         assert raw_score > 0.0
 
-        # Calculate expected value
+        # Calculate expected value (Phase 7b)
         base = 0.6125
         dasha_factor = 0.3  # 30% baseline
         after_dasha = base * dasha_factor
-        strength_amp = 0.7 + 0.3 * 0.45
-        expected = after_dasha * strength_amp * 1.0 * 100.0
+        strength_amp = 1.0 + 0.5 * 0.45
+        after_scale = after_dasha * strength_amp * 1.0 * 1.5
+        expected = after_scale * 100.0
         assert abs(raw_score - expected) < 1.0
 
-    def test_raw_score_with_transit_floor(self, scoring_engine):
-        """Test transit floor for very low scores (Phase 7)."""
+    def test_raw_score_with_low_strength(self, scoring_engine):
+        """Test amplification with low strength (Phase 7b)."""
         from api.models import ComponentBreakdown
 
         breakdown = ComponentBreakdown(
-            dasha=5.0,  # Very low dasha (0.05 normalized)
-            transit=80.0,  # High transit (0.80 normalized)
+            dasha=50.0,  # Medium dasha
+            transit=80.0,  # High transit
             strength=10.0,  # Low strength (0.10 normalized)
             aspect=10.0,
             motion=10.0
@@ -325,14 +326,16 @@ class TestScoringEngine:
         # Test with Moon (planet_factor = 0.75, lowest)
         raw_score = scoring_engine.calculate_raw_score(breakdown, Planet.MOON, event_boost=0.0)
 
-        # Base calculation would give very low score
-        # Transit floor should kick in: if score < 5, score = score×0.5 + transit×0.2
-        # This ensures planet doesn't collapse to zero
+        # With low strength, amplification is minimal: 1 + 0.5×0.1 = 1.05
+        # But score should still be > 0 due to soft dasha and scale-up
         assert raw_score > 0.0
 
-        # Transit floor should boost the score
-        # Expected: score includes transit contribution (80×0.2 = 16)
-        assert raw_score > 5.0  # Should be boosted by transit floor
+        # Calculate expected
+        base = 0.5 * 0.8 + 0.3 * 0.1 + 0.15 * 0.1 + 0.05 * 0.1
+        dasha_factor = 0.3 + 0.7 * 0.5
+        strength_amp = 1.0 + 0.5 * 0.1
+        expected = base * dasha_factor * strength_amp * 0.75 * 1.5 * 100.0
+        assert abs(raw_score - expected) < 1.0
 
     def test_normalize_scores(self, scoring_engine):
         """Test normalizing scores with competition layer (Phase 6)."""

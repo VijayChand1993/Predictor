@@ -118,11 +118,13 @@ class DomainService:
         if avg_house_score > 60:
             domain_score_raw *= 1.2
 
-        # Step 3: Sigmoid scaling - map absolute score to 0-100 range
-        # Formula: 100 × (1 - e^(-2 × score))
-        # This maps: 0 → 0, 0.5 → 63, 1.0 → 86, 1.5 → 95, 2.0 → 98
+        # Step 3: Sigmoid scaling - map absolute score to 0-100 range (Phase 7b - Decompression)
+        # Formula: 100 × (1 - e^(-0.05 × score))
+        # This creates better spread:
+        # Raw 20 → 63, Raw 40 → 86, Raw 60 → 95
+        # (Changed from -2.0 to -0.05 for wider dynamic range)
         import math
-        final_score = 100.0 * (1.0 - math.exp(-2.0 * domain_score_raw))
+        final_score = 100.0 * (1.0 - math.exp(-0.05 * domain_score_raw))
 
         # Step 4: Clamp to 100 max
         final_score = min(final_score, 100.0)
@@ -193,9 +195,9 @@ class DomainService:
 
         subdomain_score_raw = (house_component * house_weight + planet_component * planet_weight) / 100.0
 
-        # Apply sigmoid scaling
+        # Apply sigmoid scaling (Phase 7b - Decompression)
         import math
-        final_score = 100.0 * (1.0 - math.exp(-2.0 * subdomain_score_raw))
+        final_score = 100.0 * (1.0 - math.exp(-0.05 * subdomain_score_raw))
         final_score = min(final_score, 100.0)
 
         return SubdomainScore(

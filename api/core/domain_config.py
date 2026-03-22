@@ -33,7 +33,7 @@ DOMAIN_HOUSE_MAPPING: Dict[str, Dict[str, any]] = {
     "Career / Work": {
         "primary_houses": [10],      # 10th house - Career, profession, status
         "secondary_houses": [6],      # 6th house - Daily work, service, competition
-        "weights": {10: 0.7, 6: 0.3}
+        "weights": {10: 0.6, 6: 0.4}  # Phase 7b: Increased 6th house weight (0.3 → 0.4)
     },
     "Wealth / Finance": {
         "primary_houses": [2, 11],    # 2nd - Wealth/savings, 11th - Gains/income
@@ -110,7 +110,7 @@ PLANET_DOMAIN_INFLUENCE: Dict[str, Dict[str, float]] = {
         "Learning / Growth": 0.4,      # Arts, creativity
     },
     "Saturn": {
-        "Career / Work": 0.8,          # Hard work, discipline, service, labor
+        "Career / Work": 1.0,          # Phase 7b: Boosted (0.8 → 1.0) - Hard work, discipline, service, labor
         "Transformation / Uncertainty": 0.7,  # Delays, obstacles, karmic lessons
         "Health / Physical": 0.6,      # Chronic issues, bones, teeth
         "Mental State": 0.5,           # Depression, anxiety, detachment
@@ -135,22 +135,22 @@ PLANET_DOMAIN_INFLUENCE: Dict[str, Dict[str, float]] = {
 # ============================================================================
 
 SUBDOMAIN_MAPPING: Dict[str, Dict[str, any]] = {
-    # Career / Work subdomains
+    # Career / Work subdomains (Phase 7b: Boosted Saturn influence)
     "job": {
-        "houses": {10: 0.8, 6: 0.2},
-        "planets": {Planet.SUN: 0.7, Planet.SATURN: 0.6, Planet.MERCURY: 0.5}
+        "houses": {10: 0.7, 6: 0.3},  # Increased 6th house weight
+        "planets": {Planet.SUN: 0.7, Planet.SATURN: 0.8, Planet.MERCURY: 0.5}  # Saturn 0.6 → 0.8
     },
     "promotion": {
         "houses": {10: 0.7, 11: 0.3},
-        "planets": {Planet.SUN: 0.8, Planet.JUPITER: 0.7, Planet.MARS: 0.5}
+        "planets": {Planet.SUN: 0.8, Planet.JUPITER: 0.7, Planet.SATURN: 0.6, Planet.MARS: 0.5}  # Added Saturn
     },
     "workload": {
         "houses": {6: 0.7, 10: 0.3},
-        "planets": {Planet.MARS: 0.7, Planet.SATURN: 0.8}
+        "planets": {Planet.MARS: 0.7, Planet.SATURN: 0.9}  # Saturn 0.8 → 0.9
     },
     "pressure": {
         "houses": {6: 0.6, 10: 0.4},
-        "planets": {Planet.SATURN: 0.9, Planet.MARS: 0.6, Planet.RAHU: 0.5}
+        "planets": {Planet.SATURN: 1.0, Planet.MARS: 0.6, Planet.RAHU: 0.5}  # Saturn 0.9 → 1.0
     },
 
     # Wealth / Finance subdomains
